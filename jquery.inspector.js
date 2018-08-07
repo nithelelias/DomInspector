@@ -504,7 +504,7 @@
                                     }
                                 } else if (attr.name == "repeat") {
                                     // SI ES UNA REPETICION DEBERIA SOLO TENER UNA EXPRESSION VALIDA, SI TIENEN MAS SE OMITIRAN.
-                                    let actors = attr.value.trim().split(" in ");
+                                    let actors = attr.value.trim().split(" IN ").join(" in ").toLower.split(" in ");
                                     // actors[0] = object instance of array
                                     // actors[1] = array of function of iteration. 
                                     // add one iteration fnc.
