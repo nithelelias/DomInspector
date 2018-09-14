@@ -8,7 +8,7 @@
 **/
 (function(owner) {
     var Inspector = {
-        DEV: true, // SET THIS TO TRUE TO LET WARNING LOGS GO
+        DEV: false, // SET THIS TO TRUE TO LET WARNING LOGS GO
         add: add,
         remove: remove,
         attrselector: "data-comp,data-com,comp,com",
@@ -118,11 +118,19 @@
                 return dfd.promise();
             },
             js: function(_at, src) {
-                var dfd = $.Deferred();
+                var dfd = $.Deferred();               
+                var ismodule=false;
+                let ext = (([].concat(src.split("."))).pop() + "").toLowerCase();
+                if(ext.indexOf(":")>-1){
+                    ismodule=true;
+                    src=src.substring(0,src.lastIndexOf(":"));
+                    console.log(src);
+                }                 
                 // APPEND JS IF NOT LOADED BEFORE.
                 if (!foundIfLibExist(src, "script", "src")) {
                     var s = document.createElement("script");
-                    s.src = src + "?hash=" + hash;
+                    s.src = src + "?hash=" + hash; 
+                    s.type=ismodule?"module":"text/javascript"; 
                     s.onload = function() {
                         dfd.resolve();
                     };
@@ -213,6 +221,9 @@
             }
             // GET EXTENSION
             let ext = (([].concat(_src.split("."))).pop() + "").toLowerCase();
+            if(ext.indexOf(":")>-1){
+                ext=ext.split(":")[0];
+            }
             if (!callbacks.hasOwnProperty(ext)) {
                 ext = "com";
             }
@@ -221,6 +232,7 @@
             } else if (ext == "css") {
                 callbacks[ext](from, _src).then(dfd.resolve);
             } else {
+                console.log(_src);
                 $.get(_src + "?hash=" + hash).then(function(_r) {
                     callbacks[ext](from, _r, _src).then(dfd.resolve);
                 });
