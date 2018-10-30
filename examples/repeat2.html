@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Example Repeat 2</title>
+  
+  <script type="text/javascript" src="../jquery.min.js"></script>
+  <script type="text/javascript" src="../jquery.inspector.js"></script>
+</head>
+
+<body>
+  <div com="Poo as mypoo"> 
+    Items
+    <ul html="mypoo.getList()"> </ul>
+  </div>
+  <script type="text/javascript">
+    function PooClass() {      
+      this.items = ["blue","red","yellow","green"];
+      this.getList = function () { 
+        // this will return a string with html tags to be write.
+        return (this.items.map(function (_name, _index) {
+          return `<li>${_index})- ${_name}   </li>`;
+        }).join(""));
+      };
+    }
+    $.Inspector.add("Poo", PooClass);
+  </script>
+</body>
+
+</html>

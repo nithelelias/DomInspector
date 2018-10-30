@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Example Repeat 2</title>
+  
+  <script type="text/javascript" src="../jquery.min.js"></script>
+  <script type="text/javascript" src="../jquery.inspector.js"></script>
+</head>
+
+<body>
+  <div com="Poo as mypoo"> 
+    <!-- input to add new item name-->
+    <form onsubmit="return mypoo.add();">
+      <input model="mypoo.name" />        
+      <!-- click to add a new name on the object mypooo -->
+      <button type="submit" onclick="mypoo.add();"> add </button> 
+    </form> 
+    <hr>
+    Items
+    <ul html="mypoo.getList()"> </ul>
+  </div>
+  <script type="text/javascript">
+    function PooClass() {
+      this.name="";
+      this.items = [];
+      // this method will add new name if not null or empty
+      this.add = function () {
+        if (this.name.trim().length > 0) {
+          this.items.push(this.name);
+          this.name = '';
+        }
+        return false;
+      };
+      // this will cut the array of names
+      this.remove = function (_index) {
+        this.items.splice(_index, 1);
+      }
+      this.getList = function () {
+        // get instance name of this object on scope
+        let _instanceName = this.$instanceName;
+        // this will return a string with html tags to be write.
+        return (this.items.map(function (_name, _index) {
+          return `<li>${_index})- ${_name}   &nbsp; <button onclick='${_instanceName}.remove( ${_index})'> remove </button> </li>`;
+        }).join(""));
+      };
+    }
+    $.Inspector.add("Poo", PooClass);
+  </script>
+</body>
+
+</html>

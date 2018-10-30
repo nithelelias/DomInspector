@@ -1,31 +1,15 @@
-/***
-    Jquery.Inspector Fue creado por Nithel elias.
-
-    Lo que hace es usar el dom como template para el uso rapido de variables en un objeto del lado del js.
-    Se crean componentes que tendran conexion al dom de las variables si necesita
-
-
-**/
-(function(owner) {
+(function (owner) {
     var Inspector = {
         DEV: false, // SET THIS TO TRUE TO LET WARNING LOGS GO
+        version: "1.0.0.0",
+        run: run,
         add: add,
         remove: remove,
-        attrselector: "data-comp,data-com,comp,com",
-        Components: {
-            binds: {},
-            total: 0,
-            ready: 0,
-            render: function($el) {
-                if (this.ready >= this.total) {
-                    $($el).get(0).Inspector.update();
-                    return true;
-                }
-                return false;
-            }
-        },
-        callToRefreshView: callToRefreshView,
-        Includer: IncluderHandler()
+        clear: clear,
+        attrselector: "data-bind,bind,data-com,com",
+        Components: ComponentHandler(),
+        Includer: IncluderHandler(),
+        cicles: 0
     };
     // DECLARA LOS EVENTOS DEL DOM QUE SE RECONOCERAN.
     let USER_EVENTS = ["onclick", "onchange", "onsubmit", "onblur", "onkeydown", "onkeyup", "onmouseover", "onmouseout", "onload", "hover"];
@@ -34,27 +18,31 @@
         total: 0
     };
     var $innerScope = {};
+    var timeoutToLooUpComponents = null;
     owner.$.Inspector = Inspector;
     setTimeout(Inspector.Includer.getIncludes, 100);
-    // ESTE METODO AGREGA UN COMPONENTE NUEVO.
-    function add(tagname, fnclass) {
-        // ON DOM READY  RUN COMPONENT
-        let selectores = [].concat(Inspector.attrselector.split(","));
 
+
+    function lookUpComponents() {  // ON DOM READY  RUN COMPONENT
+        let selectores = [].concat(Inspector.attrselector.split(","));
         function searchForComponentsWith(attrselector) {
-            Inspector.Components.total = $("[" + attrselector + "]").length;
-            $("[" + attrselector + "]").each(function() {
+            let total_found = $("[" + attrselector + "]").length;
+            if (total_found == 0) {
+                return false;
+            }
+            $("[" + attrselector + "]").each(function () {
                 let $el = $(this);
                 let componentsName = $el.attr(attrselector).split(",");
                 if (this.__inspected == null) {
-                    initDomInspector($el, attrselector).then(function() {
-                        Inspector.Components.ready++;
+                    initDomInspector($el, attrselector).then(function () {
+                        // COMPONENT READY
                     });
-                    let waitTillIncludesEnd = function() {
+                    let waitTillIncludesEnd = function () {
                         if ($("include", $el).length > 0) {
-                            console.log("STILL INCLUDES TO LOAD wait -", tagname);
+                            //console.log("STILL INCLUDES TO LOAD wait -", tagname);
                             setTimeout(waitTillIncludesEnd, 100);
                         } else {
+
                             $el.get(0).Inspector.inspect();
                             $el.get(0).Inspector.update();
                         }
@@ -64,24 +52,34 @@
                     this.__inspected = true;
                 }
                 // add component
-                componentsName.forEach(function(compName, index) {
-                    //$el.get(0).components[compName]=initializer.call($el,compName,fnclass); 
-                    if (compName.indexOf(tagname) > -1) {
-                        Inspector.Components.binds[compName] = new ComponentWatcher($el, fnclass);
-                        Inspector.Components.binds[compName].onCallToRender = function() {
-                            if ($el != null) {
-                                Inspector.Components.render($el);
-                            }
-                        };
-                    } else {
-                        // TEMPORAL Object
-                        if (!Inspector.Components.binds.hasOwnProperty(compName)) {
-                            Inspector.Components.binds[compName] = {
-                                temp: true,
-                                instance: {}
+                componentsName.forEach(function (tagname, index) {
+
+                    //console.log(tagname,"exist?",Inspector.Components.binds.hasOwnProperty(tagname));
+                    let splitedActors=tagname.split(" as ");
+                    let compConstructorName =  splitedActors[0].trim();
+                    let instanceActor= splitedActors[1];
+
+                    // VALIDA SI LA CLASE EXISTE.
+                    if (Inspector.Components.Classes.hasOwnProperty(compConstructorName)) {
+                        // SI NO TIENE WATCHERS O NO TIENE EL WATCHER DEL COMPONENTE CREALO       && SI EL BINDING NO EXISTE
+                        if (
+                            $el.get(0).$ComWatchers == null ||
+                            (!$el.get(0).$ComWatchers.hasOwnProperty(compConstructorName) || !Inspector.Components.binds.hasOwnProperty(tagname))) {
+                            Inspector.Components.binds[tagname] = new ComponentWatcher($el, instanceActor,compConstructorName, Inspector.Components.Classes[compConstructorName]);
+                            Inspector.Components.binds[tagname].onCallToRender = function () {
+                                if ($el != null) {
+                                    Inspector.Components.render($el);
+                                }
                             };
                         }
+                    } else {
+                        // TEMPORAL Object CUZ IS NOT FOUND THE CLASS 
+                        Inspector.Components.binds[tagname] = {
+                            temp: true,
+                            instance: {}
+                        };
                     }
+
                 });
             });
         }
@@ -89,52 +87,108 @@
             searchForComponentsWith(selectores[i]);
         }
         // CALL TO REFRESH VIEW
-        callToRefreshView();
+        setTimeout(callToRefreshView);
+    }
+
+    function run() {
+        clearTimeout(timeoutToLooUpComponents);
+        timeoutToLooUpComponents = setTimeout(lookUpComponents, 100);
+    }
+    // ESTE METODO AGREGA UN COMPONENTE NUEVO.
+    function add(tagname, fnclass) {
+        Inspector.Components.Classes[tagname] = fnclass;
+        lookUpComponents();
     }
     // ESTE METODO REMUEVE UN COMPONENTE 
     function remove(tagname) {
         for (let key in Inspector.Components.binds) {
             if (key.indexOf(" as ") > -1 && tagname == key.split(" as ")[1]) {
+                Inspector.Components.binds[key].$el.remove();
                 delete Inspector.Components.binds[key];
             } else if (tagname == key) {
+                Inspector.Components.binds[key].$el.remove();
                 delete Inspector.Components.binds[key];
+            }
+        }
+    }
+    // ESTO METODO REMUEVE TODOS LOS COMPONENTES
+    function clear() {
+        // REMOVE ALL COMPONENTS
+        for (let key in Inspector.Components.binds) {
+            Inspector.Components.binds[key].$el.remove();
+            delete Inspector.Components.binds[key];
+        }
+        Inspector.Components.binds = {};
+    }
+    // ESTE METODO DEVUELVE UN HANDLER PARA LOS COMPONENTES
+    function ComponentHandler() {
+        return {
+            Classes: {},
+            binds: {},
+            render: function ($el) {
+                // IF ELEMENT NODE EXIST AND HAS INSPECTOR
+                if ($($el).length > 0 && $($el).get(0).isConnected && $($el).get(0).hasOwnProperty("Inspector")) {
+                    // RETURN TRY COUNT TO 0
+                    $el.get(0).try_count = 0;
+                    $($el).get(0).Inspector.update();
+                    return true;
+                } else if ($el != null) {
+                    // GET TRY COUNT AND ADD 1 COUNT.
+                    $el.get(0).try_count = $el.get(0).try_count || 0;
+                    $el.get(0).try_count++;
+                    if (Inspector.DEV) {
+                        console.log("TRY TO REACH:", $el.get(0).Inspector.component, $el.get(0).try_count)
+                    }
+                    if ($el.get(0).try_count > 30) {
+                        // EXCEED TRY COUNT THIS ELEMENT HAS BEEN REMOVED
+                        if (Inspector.DEV) {
+                            console.warn("Element has been removed from long time -- IT WILL BE ERASED FROM BINDINGS NOW", $el);
+                        }
+                        $el.remove();
+                        Inspector.remove($el.get(0).Inspector.component);
+                    }
+                }
+                return false;
             }
         }
     }
     // ESTE METODO CREA UN HANDLER PARA LOS INCLUDES SOLOS E EJECUTA UNA SOLA VEZ AL PRINCIPIO
     function IncluderHandler() {
         let hash = (new Date).getMinutes(); // Date.now();
+        var libs_dic_temp = {};
         let callbacks = {
-            html: function(_at, _html) {
-                var dfd = $.Deferred();
+            html: function (_at, _html) {
+                let dfd = $.Deferred();
                 $(_html).insertAfter(_at);
                 _at.remove();
                 callToRefreshView();
-                setTimeout(function() {
+                setTimeout(function () {
                     // call again if there is inner views
                     getIncludes();
                     dfd.resolve();
                 }, 1);
                 return dfd.promise();
             },
-            js: function(_at, src) {
-                var dfd = $.Deferred();               
-                var ismodule=false;
+            js: function (_at, src) {
+                let dfd = $.Deferred();
                 let ext = (([].concat(src.split("."))).pop() + "").toLowerCase();
-                if(ext.indexOf(":")>-1){
-                    ismodule=true;
-                    src=src.substring(0,src.lastIndexOf(":"));
-                    console.log(src);
-                }                 
+                let ismodule = false;
+                // APPEND JS IF NOT LOADED BEFORE.               
+                if (ext.indexOf(":") > -1) {
+                    ismodule = true;
+                    src = src.substring(0, src.lastIndexOf(":"));
+                } else if (ext == "mjs") {
+                    ismodule = true;
+                }
                 // APPEND JS IF NOT LOADED BEFORE.
                 if (!foundIfLibExist(src, "script", "src")) {
                     var s = document.createElement("script");
-                    s.src = src + "?hash=" + hash; 
-                    s.type=ismodule?"module":"text/javascript"; 
-                    s.onload = function() {
+                    s.src = src + "?hash=" + hash;
+                    s.type = ismodule ? "module" : "text/javascript";
+                    s.onload = function () {
                         dfd.resolve();
                     };
-                    s.onerror = function() {
+                    s.onerror = function () {
                         dfd.resolve();
                     };
                     document.body.appendChild(s);
@@ -143,27 +197,32 @@
                 }
                 return dfd.promise();
             },
-            css: function(_at, href) {
-                var dfd = $.Deferred();
+            mjs: function (_at, src) {
+                return this.js(_at, src);
+            },
+            css: function (_at, href) {
+                let dfd = $.Deferred();
                 // APPEND CSS
                 if (!foundIfLibExist(href, "link", "href")) {
                     var s = document.createElement("link");
                     s.href = href + "?hash=" + hash;
                     s.rel = "stylesheet";
                     s.type = "text/css";
-                    s.onload = function() {
+                    s.onload = function () {
                         dfd.resolve();
                     };
-                    s.onerror = function() {
+                    s.onerror = function () {
                         dfd.resolve();
                     };
                     document.head.appendChild(s);
+                } else {
+                    dfd.resolve();
                 }
                 return dfd.promise();
             },
-            com: function(_at, _r, _origin) {
-                var dfd = $.Deferred();
-                let _includes = typeof(_r) == "string" ? JSON.parse(_r) : _r;
+            com: function (_at, _r, _origin) {
+                let dfd = $.Deferred();
+                let _includes = typeof (_r) == "string" ? JSON.parse(_r) : _r;
                 let total = _includes.length;
                 let index = 0;
                 if (_origin != null) {
@@ -175,21 +234,31 @@
                 } else {
                     _origin = "";
                 }
+                // ORDENAMOS LOS INCLUDES DEJANDO EL HTML AL FINAL, de esta forma el JS estara listo para leer el HTML.
+                _includes.sort((a, b) => {
+                    return a.indexOf(".html") > -1;
+                });
 
+                // ITERAMOS TODOS LOS INCLUDES INDICADOS EN EL ARCHIVO .COM
                 function next() {
                     if (index < total) {
                         if (_includes[index].indexOf("./") == 0) {
                             _includes[index] = _includes[index].replace("./", _origin);
                         }
+
                         getSource(_at, _includes[index])
-                            .then(function() {
+                            .then(function () {
                                 index++;
                                 next();
                             });
                     } else {
+                        // TERMINO 
+                        Inspector.run();
+                        // RESOLVEMOS
                         dfd.resolve();
                     }
                 }
+
                 // IF IS COM then is component info load. 
                 next();
                 return dfd.promise();
@@ -199,12 +268,17 @@
         function foundIfLibExist(lib, tag, prop) {
             let exist = false;
             let arraylibs = $(tag).toArray();
+            if (libs_dic_temp.hasOwnProperty(lib)) {
+                return true;
+            }
             for (let i in arraylibs) {
                 if (arraylibs[i][prop].indexOf(lib) > -1) {
                     exist = true;
+                    libs_dic_temp[lib] = true;
                     break;
                 }
             }
+
             return exist;
         }
 
@@ -212,37 +286,66 @@
             if (Array.isArray(_src)) {
                 return callbacks.com(from, _src);
             }
-            var dfd = $.Deferred();
-            // REMOVING ? pARAMS POST CALL
-            if (_src.indexOf("?") > 1) {
-                _src = _src.split("?");
-                _src.pop();
-                _src = _src.join("");
-            }
-            // GET EXTENSION
-            let ext = (([].concat(_src.split("."))).pop() + "").toLowerCase();
-            if(ext.indexOf(":")>-1){
-                ext=ext.split(":")[0];
-            }
-            if (!callbacks.hasOwnProperty(ext)) {
-                ext = "com";
-            }
-            if (ext == "js") {
-                callbacks[ext](from, _src).then(dfd.resolve);
-            } else if (ext == "css") {
-                callbacks[ext](from, _src).then(dfd.resolve);
-            } else {
-                console.log(_src);
-                $.get(_src + "?hash=" + hash).then(function(_r) {
-                    callbacks[ext](from, _r, _src).then(dfd.resolve);
-                });
+            let dfd = $.Deferred();
+            try {
+                // REMOVING ? pARAMS POST CALL
+                if (_src.indexOf("?") > 1) {
+                    _src = _src.split("?");
+                    _src.pop();
+                    _src = _src.join("");
+                }
+                // if src is an array
+                if (_src.indexOf(",") > -1) {
+                    callbacks.com(from, _src.split(",")).then(dfd.resolve);
+                } else {
+                    // GET EXTENSION
+                    let ext = (([].concat(_src.split("."))).pop() + "").toLowerCase();
+                    if (ext.indexOf(":") > -1) {
+                        ext = ext.split(":")[0];
+                    }
+
+                    if (!callbacks.hasOwnProperty(ext)) {
+                        ext = "com";
+                    }
+
+                    if (ext == "js" || ext == "mjs") {
+                        callbacks[ext](from, _src).then(dfd.resolve);
+                    } else if (ext == "css") {
+                        callbacks[ext](from, _src).then(dfd.resolve);
+                    } else {
+                        $.get(_src + "?hash=" + hash).then(function (_r) {
+                            callbacks[ext](from, _r, _src).then(dfd.resolve);
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log("ERRR-----------------------")
+                console.log(from, _src)
+                console.warn(e);
             }
             return dfd.promise();
         }
 
         function getIncludes() {
-            $("include").each(function() {
-                getSource(this, $(this).attr("src"));
+            return new Promise((res, rej) => {
+                let totalIncludes = $("include:not(.loading)").length;
+                if (totalIncludes == 0) {
+                    res();
+                    run()
+                } else {
+                    $("include:not(.loading)").each(function () {
+                        $(this).addClass("loading")
+
+                        getSource(this, $(this).attr("src")).then(() => {
+                            totalIncludes--;
+                            if (totalIncludes == 0) {
+                                res();
+                            }
+                        });
+
+                    });
+                }
+
             });
         }
         return {
@@ -261,76 +364,157 @@
         // INDICAMOS QUE ACTUELICE la vista
         for (let i in Inspector.Components.binds) {
             let ready = Inspector.Components.render(Inspector.Components.binds[i].$el);
+            //SI ALGUNO NO ESTA LISTO LLAMA PARA ACTUALIZAR LA VISTA
             if (!ready) {
                 callToRefreshView();
                 break;
             }
         }
     }
+
+    var ticksCallback = [];
+    // METODO QUE LLAMA CUANDO UN VALOR SE HA MODIFICADO EN CUALQUIER OBJETO Y LANZA UN EVENTO QUE FUNCIONE COMO UN CALL
+    function dispatch_tickUpdate(instance, prop, a) {
+        setTimeout(() => {
+            //console.log("--------------------DISPATCH TICK UPDATE-------------------", prop, a);
+            for (let i in ticksCallback) {
+                ticksCallback[i].callback(instance, prop, a);
+            }
+        });
+    }
+
     // ESTE ES UNA CLASE QUE CREA UN OBSERVADOR DE PROPIEDADES.
-    function ComponentWatcher($el, fnclass) {
+    function ComponentWatcher($el,instanceName, className, fnclass) {
         let _this = this;
-        var properties = {};
         this.$el = $el;
-        this.instance = new fnclass($el);
         this.$watchers = {};
+
+        $el.get(0).$ComWatchers = $el.get(0).$ComWatchers || {};
+        $el.get(0).$ComWatchers[className] = this;
+        this.getExpressions = function () {
+            return $el.get(0).Inspector.getExpressions();
+        }
+        // INYECTA  METODOS PARA QUE RENDERIZE
+        $el.$update = $el.$apply = $el.$render = function () {
+            _this.onCallToRender();
+        };
+        // INYECTA UN WATCHER EXTERNO 
+        $el.$watch = function (prop, fncallback) {
+            _this.$watchers[prop] = fncallback;
+        };
+        // CUANDO QUIERE QUE SE LE NOTIFIQUE CUANDO HAYA UN TICK UPDATE
+        $el.$onTick = function (_callback) {
+            ticksCallback.push({ instance: this, $el: $el, callback: _callback });
+        };
+        // PARA EVALUAR EL SCOPE
+        $el.$eval = function (_expresion) {
+            let $scope = getComponentScope();
+            let totalComponents = Object.keys($scope);
+            let evaluated_ex_result = null;
+            if (totalComponents.length > 0) {
+                // ELEMENT THIS FOR SCOPE
+                let $element = $el;
+                with ($scope) {
+                    try {
+                        evaluated_ex_result = eval(_expresion);
+                    } catch (e) {
+                        if (Inspector.DEV) {
+                            console.warn("Can parse inspection on eval:" + _expresion, $event);
+                            console.warn(e);
+                        }
+                    }
+                }
+            }
+            return evaluated_ex_result;
+        };
+        this.instance = new fnclass($el);
         // CREA UN METODO QUE SERA SOBREESCRITO POR FUERA
-        this.onCallToRender = function() {
+        this.onCallToRender = function () {
             //--OVERRIDER ON CALL TO RENDER.
         };
+        // APLICA LOS METODOS MISMOS A LA INSTANCIA
+        this.instance.$apply = this.instance.$update = this.instance.$render = $el.$apply;
+        this.instance.$watch = $el.$watch;
+        this.instance.$eval = $el.$eval;
+        this.instance.$onTick = $el.$onTick;
+        this.instance.$instanceName=instanceName;
+
         // INYECTA UN SET PARA DEFINIR VALORES
-        this.instance.set = function(prop, value) {
+        this.instance.set = function (prop, value) {
             if (this[prop] != value) {
                 this[prop] = value;
             }
         };
-        // INYECTA  METODOS PARA QUE RENDERIZE
-        this.instance.$apply = this.instance.$update = this.instance.$render = function() {
-            _this.onCallToRender();
-        };
-        // INYECTA UN WATCHER EXTERNO 
-        this.instance.$watch = function(prop, fncallback) {
-            _this.$watchers[prop] = fncallback;
-        };
-        // ITERA LAS PROPIEDADES DE LA ISNTANCIA
-        Object.keys(this.instance).forEach(function(prop, key) {
-            // MIENTRAS QUE ESTA PROPIEADAD NO SEA UNA FUNCION
-            if (typeof(_this.instance[prop]) != "function") {
-                // INSTANCIA LA PROPIEDAD
-                properties[prop] = _this.instance[prop];
-                // SI LA PROPIEDAD ES UNA ARRAY SOBREESCRIBE LAS OPERACIOENS DE ARRAY, PARA ACTUALIZAR
-                if (Array.isArray(_this.instance[prop])) {
-                    ['pop', 'push', 'reverse', 'shift', 'unshift', 'splice', 'sort'].forEach((m) => {
-                        _this.instance[prop][m] = function() {
-                            var res = Array.prototype[m].apply(_this.instance[prop], arguments); // call normal behaviour                            
+        // CUANDO HAY UN CAMBIO EN ALGUNA PROPIEDAD DEL OBJETO.
+        function on_dispatch_tickupdate(_obj, prop, _v) {
+            dispatch_tickUpdate(_obj, prop, _v);
+
+        }
+        // ITERA LAS PROPIEDADES DE LA INSTANCIA
+        setTimeout(() => {
+            AddPropertiesEvaluator(this.instance, "");
+        });
+        function AddPropertiesEvaluator(_obj, _parentTree) {
+            if (_obj == null) {
+                return;
+            }
+            let properties = {};
+            Object.keys(_obj).forEach(function (prop, _indexProperty) {
+                // MIENTRAS QUE ESTA PROPIEADAD NO SEA UNA FUNCION
+                if (typeof (_obj[prop]) != "function") {
+                    // INSTANCIA LA PROPIEDAD
+                    properties[prop] = _obj[prop];
+                    // SI LA PROPIEDAD ES UNA ARRAY SOBREESCRIBE LAS OPERACIOENS DE ARRAY, PARA ACTUALIZAR
+                    if (Array.isArray(_obj[prop])) {
+                        ['pop', 'push', 'reverse', 'shift', 'unshift', 'splice', 'sort'].forEach((m) => {
+                            _obj[prop][m] = function () {
+                                var res = Array.prototype[m].apply(_obj[prop], arguments); // call normal behaviour                            
+                                _this.instance.$apply();
+                                return res;
+                            }
+                        });
+                    }
+                    // DEFINA LOS SETS DE LA PROPIEDAD LLAMAR A ACTUALIZAR
+                    Object.defineProperty(_obj, prop, {
+                        // INDICA SI ES ENUMERABLE SI ESTE ES UN ARRAY.
+                        enumerable: Array.isArray(_obj[prop]),
+                        // DEFINE EL SET
+                        set: function (_v) {
+                            // SI HAY UN CAMBIO
+                            if (properties[prop] != _v) {
+                                on_dispatch_tickupdate(_obj, prop, _v);
+                                // VALIDA LOS WATCHES E INDICA CUAL CAMBIO
+                                if (_this.$watchers.hasOwnProperty(_parentTree + prop)) {
+                                    _this.$watchers[_parentTree + prop](_v);
+                                }
+                                // SI ES UN OBJECto TOCA REEVALUAR LAS PROPIEDADES YA QUE HA CAMBIADO...
+                                if (typeof (_obj[prop]) == "object") {
+                                    setTimeout(() => {
+                                        AddPropertiesEvaluator(_obj[prop], _parentTree + prop + ".");
+                                    })
+                                }
+                            }
+
+                            // DALE VALOR A LA PROPIEDAD.
+                            properties[prop] = _v;
+                            // dile que actualice
                             _this.instance.$apply();
-                            return res;
+                        },
+                        // DEFINE GET
+                        get: function () {
+                            // DALE RESPEUSTA ENEL ARBOLD E PROPIEDADES
+                            return properties[prop];
                         }
                     });
-                }
-                // DEFINA LOS SETS DE LA PROPIEDAD LLAMAR A ACTUALIZAR
-                Object.defineProperty(_this.instance, prop, {
-                    // INDICA SI ES ENUMERABLE SI ESTE ES UN ARRAY.
-                    enumerable: Array.isArray(_this.instance[prop]),
-                    // DEFINE EL SET
-                    set: function(a) {
-                        // SI HAY UN WATCHER EXTERNO DE ESA PROPIEDAD Y  UN CAMBIO 
-                        if (_this.$watchers.hasOwnProperty(prop) && properties[prop] != a) {
-                            // LLAMA AL WATCHER EXTERNO
-                            _this.$watchers[prop](a);
-                        }
-                        // DALE VALOR A LA PROPIEDAD.
-                        properties[prop] = a;
-                        _this.instance.$apply();
-                    },
-                    // DEFINE GET
-                    get: function() {
-                        // DALE RESPEUSTA ENEL ARBOLD E PROPIEDADES
-                        return properties[prop];
+                    // AHORA SI LA PROPIEDAD ES UN DICCIONARIO/HASH/OBJECT
+                    if (typeof (_obj[prop]) == "object") {
+                        AddPropertiesEvaluator(_obj[prop], _parentTree + prop + ".");
                     }
-                });
-            }
-        });
+                }
+            });
+        }
+
+
     };
     // ESTE METODO ES UN HELPER PARA OBNTENER LOS COMPONENTES ANIDADOS.
     function getComponents() {
@@ -372,8 +556,9 @@
     /* ESTE METODO INSPECCIONA EL DOM PARA RECONOCER LOS ATRIBUTOS/PROPIEDADES QUE SE DEBEN INSPECCIONAR PARA
         PARA EVALUAR Y ESCRIBIR EN EL MISMO.
     */
+    var _COUNT_INSPECTS = 0;
     function initDomInspector(elements, attrselector) {
-        var dfd = $.Deferred();
+        let dfd = $.Deferred();
         elements = elements || "[inspect]";
         // DOM INSPECTORS...
         let total = $(elements).length;
@@ -391,22 +576,23 @@
             let $scope = getComponentScope();
             let totalComponents = Object.keys($scope);
             let evaluated_ex_result = null;
+            // ELEMENT THIS FOR SCOPE
             let $element = this;
-            with($scope) {
-                try {
-                    if (totalComponents.length > 0) {
+            if (totalComponents.length > 0) {
+                with ($scope) {
+                    try {
                         evaluated_ex_result = eval(_expresion);
-                    }
-                } catch (e) {
-                    if (Inspector.DEV) {
-                        console.warn("Can parse inspection on:" + _expresion, $event);
-                        console.warn(e);
+                    } catch (e) {
+                        if (Inspector.DEV) {
+                            console.warn("Can parse inspection on:" + _expresion, $event);
+                            console.warn(e);
+                        }
                     }
                 }
+                refreshViewPostComponent();
+                // save scope
+                storeScope($scope);
             }
-            refreshViewPostComponent();
-            // save scope
-            storeScope($scope);
             return evaluated_ex_result;
         }
         // ITERA EL ELEMENTO QUE TIENE EL COMPONENTE.
@@ -419,21 +605,23 @@
                     // CREA UNA VARIABLE QUE ALMACENA EL ID DE TIMEOUT PARA NO RENDERIZAR VARIAS VECES EN EL MISMO TIEMPO.   
                     var timeoutTorender = null;
                     // INICIALIZA EL INSPECTOR 
+                    _COUNT_INSPECTS++;
+                    this.setAttribute("DOM-INSPECT-" + _COUNT_INSPECTS, "");
                     this.Inspector = {
                         // OBTEN EL COMPONENTE (NOMBRE)
                         component: this.attributes[attrselector].value,
                         // VARIABLE QUE INDICA SI ESTA RENDERIZANDO LA VISTA
                         rendering: false,
                         // INSPECCIONA EL ELEMENTO PARA VER SI HAY NUEVAS EXPRESIONES POR VALIDAR
-                        inspect: function() {
+                        inspect: function () {
                             inspectNode($this);
                         },
                         // ESTE METODO OBTIENE LAS EXPRESSIONES DE LOS ELEMENTOS
-                        getExpressions: function() {
+                        getExpressions: function () {
                             return attributesToUpdate;
                         },
                         // ESTE METODO ACTUALIZA LA VISTA LLAMANDO A SER RENDERIZADO
-                        update: function() {
+                        update: function () {
                             // USA UN TIMEOUT DE UN MILISEGUNDO PARA QUE PASE A LA SIGUIENTE COLA DE EJECUCION Y ASI APILAR LOS LLAMADOS A SOLO 1.
                             clearTimeout(timeoutTorender);
                             timeoutTorender = setTimeout(render, 1);
@@ -461,27 +649,67 @@
                                 if (!_el.modelTriggerInitiated) {
                                     _el.modelTriggerInitiated = true;
                                     // GUARDA TEMPORALMENTE LAS EJECUCIONES QUE PUEDAN TENER EN onkeyup Y onchange.
-                                    let temps = {
-                                        onkeyup: "" + (_el.attributes.hasOwnProperty("onkeyup") ? _el.attributes.onkeyup.value : ""),
-                                        onchange: "" + (_el.attributes.hasOwnProperty("onchange") ? _el.attributes.onchange.value : "")
-                                    };
+                                    let events=["onkeydown","onkeyup","onchange"];
+                                    let temps = {};
+                                    for(let i in events){
+                                        let _evt=events[i];
+                                        temps[_evt]="" + (_el.attributes.hasOwnProperty(_evt) ? _el.attributes[_evt].value : "");                                   
+                                    }
                                     // SOBRE ESCRIBE LOS METODOS DE ONKEYUP Y ONCHANGE PARA QUE EJECUTEN EL TRIGGER 
                                     _el.onkeyup = modelTrigger;
+                                    _el.onkeydown = modelTrigger;
                                     _el.onchange = modelTrigger;
-                                    // AGREGA LA EXPRESION A EVALUAR INDICADA EN EL ATRIBUTO MODEL.
-                                    let expresion = validate(_el, "value", "{{" + _el.attributes.model.value + "}}");
-                                    addAttributeToUpdate(expresion);
+                                    /* 
+                                        AGREGA LA EXPRESION A EVALUAR INDICADA EN EL ATRIBUTO MODEL,
+                                        ESTO HARA QUE EL VALUE TOME EL VALOR DEL MODELO ASIGNADO,
+                                        PERO: SI ES UN RADIO, CHECK O BUTTON El valor no debe ser asignado a estos sino que estos mas bien
+                                        asignaran valor al modelo.
+
+                                    */
+                                    if (_el.type != "radio" && _el.type != "checkbox" && _el.type != "button") {
+                                        let expresion = validate(_el, "value", "{{" + _el.attributes.model.value + "}}");
+                                        addAttributeToUpdate(expresion);
+                                        if(_el.value!=null && _el.value!=""){
+                                            setTimeout(()=>{                                                
+                                                evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", {
+                                                    target:_el
+                                                }); 
+                                            });
+                                        }
+                                    } else if (_el.type == "radio") {
+                                        let expresion = validate(_el, "checked", "{{$element.value==" + _el.attributes.model.value + "?'checked':''}}");
+                                        addAttributeToUpdate(expresion);
+                                    } else if (_el.type == "checkbox") {
+                                        let expresion = validate(_el, "checked", "{{" + _el.attributes.model.value + ".indexOf($element.value)>-1?'checked':''}}");
+                                        addAttributeToUpdate(expresion);
+                                    }
                                     /*
                                         ESTE METODO ES UN TRIGGER LLAMADO POSTERIOR A onkeyup || onchange.
                                     */
                                     function modelTrigger(evt) {
-                                        // FIRST EVALUA LA EXPRESION DEL MODELO. USANDO EL METODO evaluateEvent.
-                                        evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", evt);
+                                        /* PRIMERO EVALUA LA EXPRESION DEL MODELO. USANDO EL METODO evaluateEvent.
+                                            ESTO HARA QUE EL MODELO RECIVA EL VALOR DEL ELEMENTO
+                                        */
+                                        if (_el.type == "checkbox") { 
+                                            if (_el.checked) {
+                                                evaluateEvent.call(_el, _el.attributes.model.value + ".push($event.target.value)", evt);
+                                            } else {
+                                                let v = _el.attributes.model.value;
+                                                evaluateEvent.call(_el, v + ".splice(" + v + ".indexOf($event.target.value),1)", evt);
+                                            }
+                                        } else { 
+                                            setTimeout(()=>{
+                                                evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", evt);
+                                            }) 
+                                        }
                                         // NEXT EJECUTA POSTERIOR MENTE LOS LLAMADOS DE onchange O onkeyup SI ESTOS EXISTEN
                                         try {
                                             // SI TIENE ONCHANGE LLAMALO
                                             if (evt.type = "change" && temps.onchange != null) {
                                                 evaluateEvent.call(_el, temps.onchange, evt);
+                                            } else if (evt.type = "keydown" && temps.onkeydown != null) {
+                                                // SI TIENE ONKEYUP LLAMALO.
+                                                evaluateEvent.call(_el, temps.onkeydown, evt);
                                             } else if (evt.type = "keyup" && temps.onkeyup != null) {
                                                 // SI TIENE ONKEYUP LLAMALO.
                                                 evaluateEvent.call(_el, temps.onkeyup, evt);
@@ -508,15 +736,20 @@
                                      NO LO EVALUES.
                                         - SI HAY MODELO NO USAR ONKEYUP, NI ONCHANGE AQUI.
                                      */
-                                    if (!((eventname == "onkeyup" || eventname == "onchange") &&
-                                            _el.attributes.hasOwnProperty("model"))) {
-                                        _el[eventname] = function(evt) {
+                                    if (!((eventname == "onkeydown" ||eventname == "onkeyup" || eventname == "onchange") &&
+                                        _el.attributes.hasOwnProperty("model"))) {
+                                        _el[eventname] = function (evt) {
                                             return evaluateEvent.call(_el, attr.value, evt);
                                         };
+
+                                        // VALIDAR onclick con ontouch
+                                        if (eventname == "onclick") {
+                                            _el.ontouch = _el[eventname];
+                                        }
                                     }
                                 } else if (attr.name == "repeat") {
                                     // SI ES UNA REPETICION DEBERIA SOLO TENER UNA EXPRESSION VALIDA, SI TIENEN MAS SE OMITIRAN.
-                                    let actors = attr.value.trim().split(" IN ").join(" in ").toLower.split(" in ");
+                                    let actors = attr.value.trim().split(" IN ").join(" in ").toLowerCase().split(" in ");
                                     // actors[0] = object instance of array
                                     // actors[1] = array of function of iteration. 
                                     // add one iteration fnc.
@@ -528,7 +761,7 @@
                                     // REMOVMEMOS EL ATRIBUTO DE REPETICION
                                     _el.removeAttribute("repeat");
                                     // AGREGAMOS EL ATRIBUTO DE INSTANCIA
-                                    $(_el).attr("instance", "{{$scope.movil=$Iterations[" + id_iteration + "].get($index);$index;}}");
+                                    $(_el).attr("instance", "{{$scope." + actors[0] + "=$Iterations[" + id_iteration + "].get($index);$index;}}");
                                     let templateDom = _el.outerHTML;
                                     // CREAMOS UN CONTENEDOR
                                     $("<repeat html='" + _html + "'></repeat>").insertAfter(_el);
@@ -540,17 +773,17 @@
                                     let $array = [],
                                         $array_total = 0;
                                     $Iterations[id_iteration] = {
-                                        get: function($index) {
+                                        get: function ($index) {
                                             if ($index < $array_total) {
                                                 return $array[$index];
                                             } else {
                                                 return "";
                                             }
                                         },
-                                        iteration: function(_array) {
+                                        iteration: function (_array) {
                                             $array = _array;
                                             $array_total = _array.length;
-                                            return "" + ($array.map(function(a, $index) {
+                                            return "" + ($array.map(function (a, $index) {
                                                 return templateDom.split("$index").join($index);
                                             }).join(""));
                                         }
@@ -654,26 +887,26 @@
                         if (_thisInspector.rendering == true) {
                             return;
                         }
-                        //console.log("---RENDER NOW --", $this)
+
                         _thisInspector.rendering = true;
                         let $scope = getComponentScope();
                         let totalComponents = Object.keys($scope);
                         let temp = [];
                         let rerender = false;
-                        var iterationToRender = function(attr, i) {
-                            let $element = attributesToUpdate[i].dom;
+                        var iterationToRender = function (attr, i) {
+                            let $element = attr.dom;
                             // si el $element esta conectado continuamos sino lo sacamos
                             //console.log($element,$element.isConnected);
                             if ($element.isConnected) {
                                 // GUARDAMOS EN U TEMPORAL 
-                                temp.push(attributesToUpdate[i]);
-                                let str_value = "" + attributesToUpdate[i].value;
-                                let expressions = attributesToUpdate[i].expressions;
+                                temp.push(attr);
+                                let str_value = "" + attr.value;
+                                let expressions = attr.expressions;
                                 // SI NO ES: ITERA LAS EXPRESSIONES DENTRO 
                                 for (let j = expressions.length - 1; j >= 0; j--) {
                                     let mark = "-$ex" + (j + 1) + "$-";
                                     // SCOPEINSTANCE
-                                    with($scope) {
+                                    with ($scope) {
                                         try {
                                             if (totalComponents.length > 0) {
                                                 let evaluated_ex = eval(expressions[j]);
@@ -700,7 +933,7 @@
                                 let updated = false;
                                 //-- 
                                 // UPDATE            
-                                if (attributesToUpdate[i].name == "innerHTML") {
+                                if (attr.name == "innerHTML") {
                                     // FIRST REMOVE ALL ' (SINGLE )
                                     str_value = (str_value || "").split("'").join('"');
                                     // VALIDATE IF NOT SAME
@@ -712,7 +945,7 @@
                                         $($element).html(str_value);
                                         if ($element.nodeName == "REPEAT") {
                                             // WITH REPEAT THERE IS NEEDED SOME TIME TO VALIDATE CONNECTED CHILDS
-                                            setTimeout(function() {
+                                            setTimeout(function () {
                                                 // VALIDATE IF THERE IS CHILDS TO RENDER   BY FORCE                                        
                                                 if (validateIfChildsOfNode($element) > 0) {
                                                     _thisInspector.update();
@@ -724,20 +957,25 @@
                                         validateIfChildsOfNode($element);
                                         rerender = true;
                                     }
-                                } else if (attributesToUpdate[i].name == "attributes.class") {
+                                } else if (attr.name == "attributes.class") {
                                     // VALIDATE IF NEED TO BE UPDATED
                                     if ($($element).attr("class") != str_value) {
                                         updated = "class";
                                         $($element).attr("class", str_value);
                                     }
-                                } else if (attributesToUpdate[i].name.indexOf("attributes") > -1) {
-                                    let attr_name = attributesToUpdate[i].name.split("attributes.")[1];
-                                    // VALIDATE IF NEED TO BE UPDATED
+                                } else if (attr.name.indexOf("attributes") > -1) {
+                                    let attr_name = attr.name.split("attributes.")[1];
+                                    // VALIDATE IF NEED TO BE UPDATED ENTER ALL ATTRIBUTES LIKE VALUE AND STYLE
                                     if ($($element).attr(attr_name) != str_value) {
-                                        updated = "attr_name";
-                                        $($element).attr(attr_name, str_value);
+                                        /**
+                                         *  IF IS DIFFERENT OVERWRITE, BUT VALIDATE IF IS AND INPUT ON FOCUS                                         * 
+                                          */
+                                        if(!$($element).is("input:focus")){
+                                            updated = attr_name;
+                                            $($element).attr(attr_name, str_value);
+                                        }
                                     }
-                                } else if (attributesToUpdate[i].name.indexOf("textContent") > -1) {
+                                } else if (attr.name.indexOf("textContent") > -1) {
                                     // VALIDATE IF NEED TO BE UPDATED
                                     if ($element.textContent != str_value) {
                                         updated = "textContent"
@@ -745,11 +983,15 @@
                                     }
                                 } else {
                                     // VALIDATE IF NEED TO BE UPDATED                                
-                                    let attr_value = getDescendantProp($element, attributesToUpdate[i].name);
+                                    let attr_value = getDescendantProp($element, attr.name);
                                     if (attr_value != str_value) {
-                                        updated = attributesToUpdate[i].name
-                                        setDescendantProp($element, attributesToUpdate[i].name, str_value);
+                                        updated = attr.name
+                                        setDescendantProp($element, attr.name, str_value);
                                     }
+                                }
+                                Inspector.cicles++
+                                if (Inspector.cicles > 999999) {
+                                    Inspector.cicles = 1;
                                 }
                                 if (updated && Inspector.DEV) {
                                     console.log("now updated node view", updated, $element)
@@ -761,6 +1003,7 @@
                         // iteramos atributos para su actualizacion
                         let iterations = 0,
                             totalIterations = attributesToUpdate.length;
+                        //console.log("---RENDER NOW ("+totalIterations+")--", $this)
                         attributesToUpdate.forEach(iterationToRender);
                         if (attributesToUpdate.length == 0) {
                             onEndRender();
@@ -774,7 +1017,7 @@
                                 // RE RENDER
                                 if (rerender) {
                                     render();
-                                } else {}
+                                } else { }
                                 storeScope($scope);
                                 _thisInspector.rendering = false;
                             }
@@ -785,7 +1028,7 @@
                         owner.counter = 0;
                     }
                     owner.counter++;
-                    console.log("INSTANCING FUNCTIONS " + owner.counter);
+                    //console.log("INSTANCING FUNCTIONS " + owner.counter);
                 }
             });
         return dfd.promise();

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Example input 2</title>
+</head>
+
+<body>
+  <div com="Poo as mypoo">
+    <!-- INPUT WITH MODEL -->
+    <p>Name:<input model="mypoo.name" /> </p>
+    <!-- INPUT RADIO WITH SAME MODEL DIFFERENT VALUES-->
+    Gender:
+    <ul>
+      <li><label>Male <input type="radio" value="male" model="mypoo.gender" name="gender"></label></li>
+      <li><label>Female <input type="radio" value="female" model="mypoo.gender" name="gender"></label>
+      <li><label>Hybrid <input type="radio" value="Hybrid" model="mypoo.gender" name="gender"></label></li>
+      <li><label>Apache Helicopter <input type="radio" value="Apache Helicopter" model="mypoo.gender" name="gender"></label></li>
+    </ul>
+    <br>
+    <!-- INPUT CHECKBOX WITH SAME MODEL DIFFERENT VALUES-->
+    Abilities:
+    <ul>
+      <li><label>Cook <input type="checkbox" value="Cook" model="mypoo.abilities" name="abilities"></label></li>
+      <li><label>Dance <input type="checkbox" value="Dance" model="mypoo.abilities" name="abilities"></label></li>
+      <li><label>Sleep <input type="checkbox" value="Sleep" model="mypoo.abilities" name="abilities"></label></li>
+    </ul>
+    <br>
+    <!-- SELECT WITH MODEL AND HTML TO INJECT THE HTML OPTIONS-->
+    <label for="born">
+      Year Born
+      <select name="born" model="mypoo.born" html="mypoo.allyearsoptions"></select>
+    </label>
+    <!-- TEXT AREA WITH MODEL-->
+    <br>
+    <p><textarea model="mypoo.resume" cols="30" rows="10" name="resume"></textarea></p>
+    <!--at the end the reading of the properties-->
+    <p>Im <b>{{mypoo.gender}}</b>
+      <span style="color:red">{{mypoo.name}}</span>,
+      born in <b style="color:green;">{{mypoo.born}}</b>
+      and i know how
+      to: <b style="color:blue">{{mypoo.abilities}}</b></p>
+      <!-- HERE TEXT AREA BIND-->
+    <pre> {{mypoo.resume}}      </pre>
+  </div>
+  <script type="text/javascript" src="../jquery.min.js"></script>
+  <script type="text/javascript" src="../jquery.inspector.js"></script>
+  <script type="text/javascript">
+    function PooClass() {
+      // DEFAULT VALUES.
+      this.name = "willie poo";
+      this.gender = "male";
+      this.resume = "I like to..."
+      this.abilities = [];
+      this.born=1980;
+      this.allyearsoptions = "";
+      // PEACE OF CODE TO ITERATE YEARS AND CREATE STATIC HTML OPTIONS
+      {
+        let year = 1970, maxYear = (new Date()).getFullYear();
+        while (year < maxYear) {
+          this.allyearsoptions += `<option>${year}</option>`;
+          year++;
+        }
+      }
+    }
+    // TELL INSPECTOR TO BIND ADD THIS OBJECT
+    $.Inspector.add("Poo", PooClass);
+  </script>
+</body>
+
+</html>
