@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Example multi components 2</title>
+</head>
+
+<body>
+  <div>
+   
+	   <!-- my components with inner components-->
+    <div com="Poo " name="Poo"></div>
+    <div com="Poo " name="Bob"></div>
+  </div>
+  <script type="text/javascript" src="../jquery.min.js"></script>
+  <script type="text/javascript" src="../jquery.inspector.js"></script>
+  <script type="text/javascript">
+    // OBJETO POO
+    function PooClass(_el) {
+      this.name = _el.attr("name") || "unamed"; 
+      _el.setHtml(`<p>Poo:<input model="this.name" /> =&nbsp;{{this.name}}</p>
+                  <br>
+                  <div com="Timer"></div>`);
+    }
+    // OBJETO TIMER
+    function Timer(_el) {
+      _el.setHtml(`<span>CLOCK {{this.$instanceName}}: </span><span html="this.time"  >0</span>`)
+      this.time = (new Date()).toLocaleTimeString();
+      setInterval(() => {
+        this.time = (new Date()).toLocaleTimeString();
+      }, 500);// HALF SECOND JUST IN CASE...       
+    }
+    // TELL INSPECTOR TO BIND ADD THIS OBJECTS     
+    $.Inspector.add("Poo", PooClass);
+    $.Inspector.add("Timer", Timer);
+
+  </script>
+</body>
+
+</html>

@@ -6,7 +6,7 @@
         add: add,
         remove: remove,
         clear: clear,
-        attrselector: "data-bind,bind,data-com,com",
+        attrselector: "data-bind,bind,data-com,com,data-comp,comp",
         Components: ComponentHandler(),
         Includer: IncluderHandler(),
         cicles: 0
@@ -53,12 +53,22 @@
                 }
                 // add component
                 componentsName.forEach(function (tagname, index) {
-
+                    tagname=tagname.trim();
                     //console.log(tagname,"exist?",Inspector.Components.binds.hasOwnProperty(tagname));
+                    if(tagname.toLowerCase().indexOf(" as ")==-1){
+                        let countTagName=1;
+                        let realtagname=tagname.trim();
+                        tagname=realtagname+" as "+realtagname.toLowerCase(); 
+                        while(Inspector.Components.binds.hasOwnProperty(tagname) ){                            
+                            countTagName++;
+                            tagname=realtagname+" as "+realtagname.toLowerCase()+countTagName;                            
+                        }
+                        
+                        $el.attr(attrselector,tagname)
+                    }
                     let splitedActors=tagname.split(" as ");
                     let compConstructorName =  splitedActors[0].trim();
-                    let instanceActor= splitedActors[1];
-
+                    let instanceActor= splitedActors[1]; 
                     // VALIDA SI LA CLASE EXISTE.
                     if (Inspector.Components.Classes.hasOwnProperty(compConstructorName)) {
                         // SI NO TIENE WATCHERS O NO TIENE EL WATCHER DEL COMPONENTE CREALO       && SI EL BINDING NO EXISTE
@@ -386,7 +396,7 @@
     // ESTE ES UNA CLASE QUE CREA UN OBSERVADOR DE PROPIEDADES.
     function ComponentWatcher($el,instanceName, className, fnclass) {
         let _this = this;
-        this.$el = $el;
+        this.$el = $el;        
         this.$watchers = {};
 
         $el.get(0).$ComWatchers = $el.get(0).$ComWatchers || {};
@@ -394,6 +404,11 @@
         this.getExpressions = function () {
             return $el.get(0).Inspector.getExpressions();
         }
+        // ADICIONA EL HTML DENTRO DEL MISMO Y REMPLAZA LOS THIS POR EL INSTANCE CORRESPONDEINDE DEL OBJETO
+        $el.setHtml=$el.setHTML=(html)=>{
+            $el.html(html.split("this").join(instanceName));
+            $el.get(0).Inspector.inspect();
+        };
         // INYECTA  METODOS PARA QUE RENDERIZE
         $el.$update = $el.$apply = $el.$render = function () {
             _this.onCallToRender();
@@ -413,7 +428,7 @@
             let evaluated_ex_result = null;
             if (totalComponents.length > 0) {
                 // ELEMENT THIS FOR SCOPE
-                let $element = $el;
+                let $element = $el;                
                 with ($scope) {
                     try {
                         evaluated_ex_result = eval(_expresion);
@@ -427,6 +442,7 @@
             }
             return evaluated_ex_result;
         };
+       
         this.instance = new fnclass($el);
         // CREA UN METODO QUE SERA SOBREESCRITO POR FUERA
         this.onCallToRender = function () {
@@ -455,7 +471,7 @@
             AddPropertiesEvaluator(this.instance, "");
         });
         function AddPropertiesEvaluator(_obj, _parentTree) {
-            if (_obj == null) {
+            if (_obj == null || typeof(_obj)!="object") {
                 return;
             }
             let properties = {};
@@ -578,6 +594,7 @@
             let evaluated_ex_result = null;
             // ELEMENT THIS FOR SCOPE
             let $element = this;
+            
             if (totalComponents.length > 0) {
                 with ($scope) {
                     try {
@@ -894,7 +911,7 @@
                         let temp = [];
                         let rerender = false;
                         var iterationToRender = function (attr, i) {
-                            let $element = attr.dom;
+                            let $element = attr.dom;                            
                             // si el $element esta conectado continuamos sino lo sacamos
                             //console.log($element,$element.isConnected);
                             if ($element.isConnected) {

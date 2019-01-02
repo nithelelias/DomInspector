@@ -3,7 +3,7 @@
 ## INPUTS EXAMPLES
 
 #### Example input 1
- [Link to Example](https://github.com/examples/input1.html): 
+ [Link to Example](input1.html): 
   Simple input two way data binding.
 ```html
  <input model="mypoo.name" /> &nbsp; =  {{mypoo.name}}   
@@ -11,7 +11,7 @@
 Input goes to data of the object and the data can be access in another node 
 
 #### Example input 2
-[Link to Example](https://github.com/examples/input2.html): 
+[Link to Example](input2.html): 
 
 Using the Inputs: text, radio, checkbox, select, text area
 ```html
@@ -51,7 +51,7 @@ Using the Inputs: text, radio, checkbox, select, text area
 ## ADDING COMPONENTS
 
 #### Example multiple-components 
-[link to example](https://github.com/examples/multiple-components.html): 
+[link to example](multiple-components.html): 
 
 Adding multiple components and ... a timer?.
 ```html
@@ -66,7 +66,7 @@ Adding multiple components and ... a timer?.
 ```
 
 #### Example multiple-components 2
-[link to example](https://github.com/examples/multiple-components2.html): 
+[link to example](multiple-components2.html): 
 
 Adding multiple components separately.
 ```html
@@ -79,11 +79,41 @@ Adding multiple components separately.
     <p com="Poo as imbob">Bob:<input model="imbob.name" value="Bob" /> =&nbsp;{{imbob.name}}</p>
    </div>
 ```
+#### Example multiple-components 3
+[link to example](multiple-components2.html): 
+
+```html
+   <!-- my components with inner components-->
+    <div com="Poo " name="Poo"></div>
+    <div com="Poo " name="Bob"></div> 
+```
+```js
+ // OBJETO POO
+    function PooClass(_el) {
+      this.name = _el.attr("name") || "unamed"; 
+      _el.setHtml(`<p>Poo:<input model="this.name" /> =&nbsp;{{this.name}}</p>
+                  <br>
+                  <div com="Timer"></div>`);
+    }
+    // OBJETO TIMER
+    function Timer(_el) {
+      _el.setHtml(`<span>CLOCK {{this.$instanceName}}: </span><span html="this.time"  >0</span>`)
+      this.time = (new Date()).toLocaleTimeString();
+      setInterval(() => {
+        this.time = (new Date()).toLocaleTimeString();
+      }, 500);// HALF SECOND JUST IN CASE...       
+    }
+    // TELL INSPECTOR TO BIND ADD THIS OBJECTS     
+    $.Inspector.add("Poo", PooClass);
+    $.Inspector.add("Timer", Timer);
+```
+Adding multiple components dinamicaly.
+
 
 ### Repetitions
 
 #### Example Repeat
-[link to example](https://github.com/examples/repeat.html): 
+[link to example](repeat.html): 
 
 Repeating elements
 ```html
@@ -101,7 +131,7 @@ Repeating elements
 ```
 
 #### Example Repeat 2
-[link to example](https://github.com/examples/repeat2.html): 
+[link to example](repeat2.html): 
 
 Repeating elements using html tag to embed html
 ```html
@@ -123,7 +153,7 @@ Repeating elements using html tag to embed html
 ```
 
 #### Example Repeat 3
-[link to example](https://github.com/examples/repeat3.html): 
+[link to example]repeat3.html): 
 
 Repeating elements using html tag to embed html dinamically
 ```html
@@ -171,7 +201,7 @@ Repeating elements using html tag to embed html dinamically
 ### Includes
 
 #### Example include
-[link to example](https://github.com/examples/include1.html): 
+[link to example](include1.html): 
 
 Include the div an js separately
 ```html      
@@ -182,7 +212,7 @@ Include the div an js separately
 
 ```
 
-[link to example](https://github.com/examples/include2.html): 
+[link to example](include2.html): 
 
 Include several files with , separated
 ```html    
@@ -190,7 +220,7 @@ Include several files with , separated
     
 ```
 
-[link to example](https://github.com/examples/include3.html): 
+[link to example](include3.html): 
 
 Include from file .json or .com
 ```html    
