@@ -80,8 +80,9 @@ Adding multiple components separately.
    </div>
 ```
 #### Example multiple-components 3
-[link to example](multiple-components2.html): 
+[link to example](multiple-components3.html): 
 
+Adding multiple components dinamicaly.
 ```html
    <!-- my components with inner components-->
     <div com="Poo " name="Poo"></div>
@@ -107,7 +108,6 @@ Adding multiple components separately.
     $.Inspector.add("Poo", PooClass);
     $.Inspector.add("Timer", Timer);
 ```
-Adding multiple components dinamicaly.
 
 
 ### Repetitions
