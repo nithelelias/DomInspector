@@ -1,7 +1,7 @@
 (function (owner) {
     var Inspector = {
         DEV: false, // SET THIS TO TRUE TO LET WARNING LOGS GO
-        version: "1.0.0.0",
+        version: "1.0.0.1",
         run: run,
         add: add,
         remove: remove,
@@ -20,7 +20,9 @@
     var $innerScope = {};
     var timeoutToLooUpComponents = null;
     owner.$.Inspector = Inspector;
-    setTimeout(Inspector.Includer.getIncludes, 100);
+    window.onload = function () {
+        setTimeout(Inspector.Includer.getIncludes, 100);
+    }
 
 
     function lookUpComponents() {  // ON DOM READY  RUN COMPONENT
@@ -43,8 +45,8 @@
                             setTimeout(waitTillIncludesEnd, 100);
                         } else {
 
-                            $el.get(0).Inspector.inspect();
-                            $el.get(0).Inspector.update();
+                            //$el.get(0).Inspector.inspect();
+                            // $el.get(0).Inspector.update();
                         }
                     };
                     // SI HAY INCLUDES ABAJO DE MI.
@@ -53,29 +55,29 @@
                 }
                 // add component
                 componentsName.forEach(function (tagname, index) {
-                    tagname=tagname.trim();
+                    tagname = tagname.trim();
                     //console.log(tagname,"exist?",Inspector.Components.binds.hasOwnProperty(tagname));
-                    if(tagname.toLowerCase().indexOf(" as ")==-1){
-                        let countTagName=1;
-                        let realtagname=tagname.trim();
-                        tagname=realtagname+" as "+realtagname.toLowerCase(); 
-                        while(Inspector.Components.binds.hasOwnProperty(tagname) ){                            
+                    if (tagname.toLowerCase().indexOf(" as ") == -1) {
+                        let countTagName = 1;
+                        let realtagname = tagname.trim();
+                        tagname = realtagname + " as " + realtagname.toLowerCase();
+                        while (Inspector.Components.binds.hasOwnProperty(tagname)) {
                             countTagName++;
-                            tagname=realtagname+" as "+realtagname.toLowerCase()+countTagName;                            
+                            tagname = realtagname + " as " + realtagname.toLowerCase() + countTagName;
                         }
-                        
-                        $el.attr(attrselector,tagname)
+
+                        $el.attr(attrselector, tagname)
                     }
-                    let splitedActors=tagname.split(" as ");
-                    let compConstructorName =  splitedActors[0].trim();
-                    let instanceActor= splitedActors[1]; 
+                    let splitedActors = tagname.split(" as ");
+                    let compConstructorName = splitedActors[0].trim();
+                    let instanceActor = splitedActors[1];
                     // VALIDA SI LA CLASE EXISTE.
                     if (Inspector.Components.Classes.hasOwnProperty(compConstructorName)) {
                         // SI NO TIENE WATCHERS O NO TIENE EL WATCHER DEL COMPONENTE CREALO       && SI EL BINDING NO EXISTE
                         if (
                             $el.get(0).$ComWatchers == null ||
                             (!$el.get(0).$ComWatchers.hasOwnProperty(compConstructorName) || !Inspector.Components.binds.hasOwnProperty(tagname))) {
-                            Inspector.Components.binds[tagname] = new ComponentWatcher($el, instanceActor,compConstructorName, Inspector.Components.Classes[compConstructorName]);
+                            Inspector.Components.binds[tagname] = new ComponentWatcher($el, instanceActor, compConstructorName, Inspector.Components.Classes[compConstructorName]);
                             Inspector.Components.binds[tagname].onCallToRender = function () {
                                 if ($el != null) {
                                     Inspector.Components.render($el);
@@ -169,12 +171,26 @@
         let callbacks = {
             html: function (_at, _html) {
                 let dfd = $.Deferred();
+                // VALIDATE IF FOR RENDERING THIS TAG HAS BEEN UNATTACH THEN FOUND IF THERES ANY WITH SAME SRC
+                if (!_at.isConnected) {
+                    _at = $(_at.tagName.toLowerCase() + `[src='${_at.attributes.src.value}']`).get(0)
+                }
+                if (!_at == null || !_at.isConnected) {
+                    try {
+                        dfd.reject();
+                        _at.remove();
+
+                    } catch (e) {
+                        console.warn(e);
+                    }
+                    return;
+                }
                 $(_html).insertAfter(_at);
                 _at.remove();
                 callToRefreshView();
                 setTimeout(function () {
                     // call again if there is inner views
-                    getIncludes();
+                    // --  getIncludes();
                     dfd.resolve();
                 }, 1);
                 return dfd.promise();
@@ -394,9 +410,9 @@
     }
 
     // ESTE ES UNA CLASE QUE CREA UN OBSERVADOR DE PROPIEDADES.
-    function ComponentWatcher($el,instanceName, className, fnclass) {
+    function ComponentWatcher($el, instanceName, className, fnclass) {
         let _this = this;
-        this.$el = $el;        
+        this.$el = $el;
         this.$watchers = {};
 
         $el.get(0).$ComWatchers = $el.get(0).$ComWatchers || {};
@@ -405,9 +421,19 @@
             return $el.get(0).Inspector.getExpressions();
         }
         // ADICIONA EL HTML DENTRO DEL MISMO Y REMPLAZA LOS THIS POR EL INSTANCE CORRESPONDEINDE DEL OBJETO
-        $el.setHtml=$el.setHTML=(html)=>{
-            $el.html(html.split("this").join(instanceName));
+        $el.setHtml = $el.setHTML = (html) => {
+            $el.html(html);
+            $el._replaceThisWithMyInstanceName();
+        };
+
+        $el._replaceThisWithMyInstanceName = function () {
+            $el.html($el.html().split("this.").join(instanceName + "."));
             $el.get(0).Inspector.inspect();
+
+            // console.log("get Includes")
+            // -- Inspector.Includer.getIncludes();
+
+
         };
         // INYECTA  METODOS PARA QUE RENDERIZE
         $el.$update = $el.$apply = $el.$render = function () {
@@ -428,7 +454,7 @@
             let evaluated_ex_result = null;
             if (totalComponents.length > 0) {
                 // ELEMENT THIS FOR SCOPE
-                let $element = $el;                
+                let $element = $el;
                 with ($scope) {
                     try {
                         evaluated_ex_result = eval(_expresion);
@@ -442,7 +468,7 @@
             }
             return evaluated_ex_result;
         };
-       
+        $el._replaceThisWithMyInstanceName();
         this.instance = new fnclass($el);
         // CREA UN METODO QUE SERA SOBREESCRITO POR FUERA
         this.onCallToRender = function () {
@@ -453,7 +479,7 @@
         this.instance.$watch = $el.$watch;
         this.instance.$eval = $el.$eval;
         this.instance.$onTick = $el.$onTick;
-        this.instance.$instanceName=instanceName;
+        this.instance.$instanceName = instanceName;
 
         // INYECTA UN SET PARA DEFINIR VALORES
         this.instance.set = function (prop, value) {
@@ -471,7 +497,7 @@
             AddPropertiesEvaluator(this.instance, "");
         });
         function AddPropertiesEvaluator(_obj, _parentTree) {
-            if (_obj == null || typeof(_obj)!="object") {
+            if (_obj == null || typeof (_obj) != "object") {
                 return;
             }
             let properties = {};
@@ -594,7 +620,7 @@
             let evaluated_ex_result = null;
             // ELEMENT THIS FOR SCOPE
             let $element = this;
-            
+
             if (totalComponents.length > 0) {
                 with ($scope) {
                     try {
@@ -666,11 +692,11 @@
                                 if (!_el.modelTriggerInitiated) {
                                     _el.modelTriggerInitiated = true;
                                     // GUARDA TEMPORALMENTE LAS EJECUCIONES QUE PUEDAN TENER EN onkeyup Y onchange.
-                                    let events=["onkeydown","onkeyup","onchange"];
+                                    let events = ["onkeydown", "onkeyup", "onchange"];
                                     let temps = {};
-                                    for(let i in events){
-                                        let _evt=events[i];
-                                        temps[_evt]="" + (_el.attributes.hasOwnProperty(_evt) ? _el.attributes[_evt].value : "");                                   
+                                    for (let i in events) {
+                                        let _evt = events[i];
+                                        temps[_evt] = "" + (_el.attributes.hasOwnProperty(_evt) ? _el.attributes[_evt].value : "");
                                     }
                                     // SOBRE ESCRIBE LOS METODOS DE ONKEYUP Y ONCHANGE PARA QUE EJECUTEN EL TRIGGER 
                                     _el.onkeyup = modelTrigger;
@@ -686,11 +712,11 @@
                                     if (_el.type != "radio" && _el.type != "checkbox" && _el.type != "button") {
                                         let expresion = validate(_el, "value", "{{" + _el.attributes.model.value + "}}");
                                         addAttributeToUpdate(expresion);
-                                        if(_el.value!=null && _el.value!=""){
-                                            setTimeout(()=>{                                                
+                                        if (_el.value != null && _el.value != "") {
+                                            setTimeout(() => {
                                                 evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", {
-                                                    target:_el
-                                                }); 
+                                                    target: _el
+                                                });
                                             });
                                         }
                                     } else if (_el.type == "radio") {
@@ -707,17 +733,17 @@
                                         /* PRIMERO EVALUA LA EXPRESION DEL MODELO. USANDO EL METODO evaluateEvent.
                                             ESTO HARA QUE EL MODELO RECIVA EL VALOR DEL ELEMENTO
                                         */
-                                        if (_el.type == "checkbox") { 
+                                        if (_el.type == "checkbox") {
                                             if (_el.checked) {
                                                 evaluateEvent.call(_el, _el.attributes.model.value + ".push($event.target.value)", evt);
                                             } else {
                                                 let v = _el.attributes.model.value;
                                                 evaluateEvent.call(_el, v + ".splice(" + v + ".indexOf($event.target.value),1)", evt);
                                             }
-                                        } else { 
-                                            setTimeout(()=>{
+                                        } else {
+                                            setTimeout(() => {
                                                 evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", evt);
-                                            }) 
+                                            })
                                         }
                                         // NEXT EJECUTA POSTERIOR MENTE LOS LLAMADOS DE onchange O onkeyup SI ESTOS EXISTEN
                                         try {
@@ -753,7 +779,7 @@
                                      NO LO EVALUES.
                                         - SI HAY MODELO NO USAR ONKEYUP, NI ONCHANGE AQUI.
                                      */
-                                    if (!((eventname == "onkeydown" ||eventname == "onkeyup" || eventname == "onchange") &&
+                                    if (!((eventname == "onkeydown" || eventname == "onkeyup" || eventname == "onchange") &&
                                         _el.attributes.hasOwnProperty("model"))) {
                                         _el[eventname] = function (evt) {
                                             return evaluateEvent.call(_el, attr.value, evt);
@@ -763,6 +789,11 @@
                                         if (eventname == "onclick") {
                                             _el.ontouch = _el[eventname];
                                         }
+                                    }
+                                } else if (attr.name == "show") {
+                                    let expresion = validate(_el, attr.name, attr.value.indexOf("{{") == -1 ? "{{" + attr.value + "}}" : attr.value);
+                                    if (expresion != null) {
+                                        addAttributeToUpdate(expresion);
                                     }
                                 } else if (attr.name == "repeat") {
                                     // SI ES UNA REPETICION DEBERIA SOLO TENER UNA EXPRESSION VALIDA, SI TIENEN MAS SE OMITIRAN.
@@ -911,7 +942,7 @@
                         let temp = [];
                         let rerender = false;
                         var iterationToRender = function (attr, i) {
-                            let $element = attr.dom;                            
+                            let $element = attr.dom;
                             // si el $element esta conectado continuamos sino lo sacamos
                             //console.log($element,$element.isConnected);
                             if ($element.isConnected) {
@@ -920,6 +951,7 @@
                                 let str_value = "" + attr.value;
                                 let expressions = attr.expressions;
                                 // SI NO ES: ITERA LAS EXPRESSIONES DENTRO 
+
                                 for (let j = expressions.length - 1; j >= 0; j--) {
                                     let mark = "-$ex" + (j + 1) + "$-";
                                     // SCOPEINSTANCE
@@ -948,7 +980,7 @@
                                 }
                                 // VALIDATE IF THE ATTRIBUTE OF UPDATE IS NOT THE SAME VALUE
                                 let updated = false;
-                                //-- 
+
                                 // UPDATE            
                                 if (attr.name == "innerHTML") {
                                     // FIRST REMOVE ALL ' (SINGLE )
@@ -969,7 +1001,7 @@
                                                 }
                                             }, 1);
                                         }
-                                        // VALIDATE IF THERE IS IMPORTS
+                                        // VALIDATE IF THERE IS IMPORTS 
                                         Inspector.Includer.getIncludes();
                                         validateIfChildsOfNode($element);
                                         rerender = true;
@@ -987,9 +1019,10 @@
                                         /**
                                          *  IF IS DIFFERENT OVERWRITE, BUT VALIDATE IF IS AND INPUT ON FOCUS                                         * 
                                           */
-                                        if(!$($element).is("input:focus")){
+                                        if (!$($element).is("input:focus")) {
                                             updated = attr_name;
                                             $($element).attr(attr_name, str_value);
+
                                         }
                                     }
                                 } else if (attr.name.indexOf("textContent") > -1) {
@@ -1004,6 +1037,20 @@
                                     if (attr_value != str_value) {
                                         updated = attr.name
                                         setDescendantProp($element, attr.name, str_value);
+                                        // SI EL ATTRIBUTO SE ACTUALIZA Y ES UN SHOW
+                                        if (attr.name == "show") {
+                                            if (str_value.trim() == "false") {
+                                                $($element).hide();
+                                            } else {
+                                                $($element).show();
+                                            }
+                                        } else if (attr.name == "hide") {
+                                            if (str_value.trim() == "false") {
+                                                $($element).show();
+                                            } else {
+                                                $($element).hide();
+                                            }
+                                        }
                                     }
                                 }
                                 Inspector.cicles++
