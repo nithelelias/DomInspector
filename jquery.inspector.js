@@ -1,7 +1,8 @@
 (function (owner) {
+    var hashResources = false;
     var Inspector = {
-        DEV: false, // SET THIS TO TRUE TO LET WARNING LOGS GO
-        version: "1.0.0.1",
+        DEV: false, // SET THIS TO TRUE TO LET WARNING LOGS GO        
+        version: "1.0.0.3",
         run: run,
         add: add,
         remove: remove,
@@ -9,10 +10,12 @@
         attrselector: "data-bind,bind,data-com,com,data-comp,comp",
         Components: ComponentHandler(),
         Includer: IncluderHandler(),
-        cicles: 0
+        cicles: 0,
+        // VECES QUE VA PREGUNTAR POR EL COMPONENTE, ESTO ES POR SI EL COMPONENTE YA NO ESTA ANIDADO AL DOCUMENTO, PARA EVITAR FATIGA LO REMOVERA.
+        MAX_TRYOUT_COMPONENT: 5
     };
     // DECLARA LOS EVENTOS DEL DOM QUE SE RECONOCERAN.
-    let USER_EVENTS = ["onclick", "onchange", "onsubmit", "onblur", "onkeydown", "onkeyup", "onmouseover", "onmouseout", "onload", "hover"];
+    let USER_EVENTS = ["onclick", "onchange", "onsubmit", "onblur", "onkeydown", "onkeyup", "onmousedown", "onmouseup", "onmouseover", "onmouseout", "onload", "hover"];
     let timeOutToRefreshPostComponents = null;
     var $Iterations = {
         total: 0
@@ -76,7 +79,8 @@
                         // SI NO TIENE WATCHERS O NO TIENE EL WATCHER DEL COMPONENTE CREALO       && SI EL BINDING NO EXISTE
                         if (
                             $el.get(0).$ComWatchers == null ||
-                            (!$el.get(0).$ComWatchers.hasOwnProperty(compConstructorName) || !Inspector.Components.binds.hasOwnProperty(tagname))) {
+                            (!$el.get(0).$ComWatchers.hasOwnProperty(compConstructorName) ||
+                                !Inspector.Components.binds.hasOwnProperty(tagname))) {
                             Inspector.Components.binds[tagname] = new ComponentWatcher($el, instanceActor, compConstructorName, Inspector.Components.Classes[compConstructorName]);
                             Inspector.Components.binds[tagname].onCallToRender = function () {
                                 if ($el != null) {
@@ -117,9 +121,11 @@
             if (key.indexOf(" as ") > -1 && tagname == key.split(" as ")[1]) {
                 Inspector.Components.binds[key].$el.remove();
                 delete Inspector.Components.binds[key];
+                break;
             } else if (tagname == key) {
                 Inspector.Components.binds[key].$el.remove();
                 delete Inspector.Components.binds[key];
+                break;
             }
         }
     }
@@ -149,15 +155,15 @@
                     $el.get(0).try_count = $el.get(0).try_count || 0;
                     $el.get(0).try_count++;
                     if (Inspector.DEV) {
-                        console.log("TRY TO REACH:", $el.get(0).Inspector.component, $el.get(0).try_count)
+                        console.log("TRY TO REACH:", $el.get(0).Inspector.component(), $el.get(0).try_count)
                     }
-                    if ($el.get(0).try_count > 30) {
+                    if ($el.get(0).try_count > Inspector.MAX_TRYOUT_COMPONENT) {
                         // EXCEED TRY COUNT THIS ELEMENT HAS BEEN REMOVED
                         if (Inspector.DEV) {
                             console.warn("Element has been removed from long time -- IT WILL BE ERASED FROM BINDINGS NOW", $el);
                         }
                         $el.remove();
-                        Inspector.remove($el.get(0).Inspector.component);
+                        Inspector.remove($el.get(0).Inspector.component());
                     }
                 }
                 return false;
@@ -166,33 +172,48 @@
     }
     // ESTE METODO CREA UN HANDLER PARA LOS INCLUDES SOLOS E EJECUTA UNA SOLA VEZ AL PRINCIPIO
     function IncluderHandler() {
-        let hash = (new Date).getMinutes(); // Date.now();
+        let hash = hashResources ? (new Date).getMinutes() : ""; // Date.now();
         var libs_dic_temp = {};
         let callbacks = {
             html: function (_at, _html) {
                 let dfd = $.Deferred();
-                // VALIDATE IF FOR RENDERING THIS TAG HAS BEEN UNATTACH THEN FOUND IF THERES ANY WITH SAME SRC
-                if (!_at.isConnected) {
-                    _at = $(_at.tagName.toLowerCase() + `[src='${_at.attributes.src.value}']`).get(0)
-                }
-                if (!_at == null || !_at.isConnected) {
-                    try {
-                        dfd.reject();
-                        _at.remove();
+                try {
 
-                    } catch (e) {
-                        console.warn(e);
+
+                    if (_at == null) {
+                        dfd.reject();
+                        return dfd.promise();
                     }
-                    return;
+                    // VALIDATE IF FOR RENDERING THIS TAG HAS BEEN UNATTACH THEN FOUND IF THERES ANY WITH SAME SRC
+                    if (!_at.isConnected) {
+                        _at = $(_at.tagName.toLowerCase() + `[src='${_at.attributes.src.value}']`).get(0)
+                    }
+                    if (_at == null) {
+                        dfd.reject();
+                        return dfd.promise();
+                    }
+                    if (!_at == null || !_at.isConnected) {
+                        try {
+                            dfd.reject();
+                            _at.remove();
+
+                        } catch (e) {
+                            console.warn(e);
+                        }
+                        return;
+                    }
+                    $(_html).insertAfter(_at);
+                    _at.remove();
+                    callToRefreshView();
+                    setTimeout(function () {
+                        // call again if there is inner views daña losthis  
+                        //getIncludes();
+                        dfd.resolve();
+                    }, 1);
+                } catch (e) {
+                    console.log(e);
+                    dfd.reject();
                 }
-                $(_html).insertAfter(_at);
-                _at.remove();
-                callToRefreshView();
-                setTimeout(function () {
-                    // call again if there is inner views
-                    // --  getIncludes();
-                    dfd.resolve();
-                }, 1);
                 return dfd.promise();
             },
             js: function (_at, src) {
@@ -200,9 +221,9 @@
                 let ext = (([].concat(src.split("."))).pop() + "").toLowerCase();
                 let ismodule = false;
                 // APPEND JS IF NOT LOADED BEFORE.               
-                if (ext.indexOf(":") > -1) {
+                if (ext.indexOf(":module") > -1) {
                     ismodule = true;
-                    src = src.substring(0, src.lastIndexOf(":"));
+                    src = src.substring(0, src.lastIndexOf(":module"));
                 } else if (ext == "mjs") {
                     ismodule = true;
                 }
@@ -279,7 +300,8 @@
                             });
                     } else {
                         // TERMINO 
-                        Inspector.run();
+                        //console.log("RUN..1")
+                        // -- Inspector.run();
                         // RESOLVEMOS
                         dfd.resolve();
                     }
@@ -329,7 +351,6 @@
                     if (ext.indexOf(":") > -1) {
                         ext = ext.split(":")[0];
                     }
-
                     if (!callbacks.hasOwnProperty(ext)) {
                         ext = "com";
                     }
@@ -348,11 +369,32 @@
                 console.log("ERRR-----------------------")
                 console.log(from, _src)
                 console.warn(e);
+
             }
             return dfd.promise();
         }
 
+        let lastTotal = -1, timeoutValidateme;
+        function validateMe() {
+            var total = $("include").length;
+            // -- App.toast("total:" + total + "==" + lastTotal);
+            if (total > 0) {
+                if (lastTotal == total) {
+                    getIncludes();
+                } else {
+                    lastTotal = total;
+                    timeoutValidateme = setTimeout(validateMe, 1000);
+                }
+            }
+        }
         function getIncludes() {
+            {
+                // VALIDAME EN UN SEGUNDO SI TODOS LOS INCLUDES SE HAN GENERADO
+                lastTotal = -1;
+                clearTimeout(timeoutValidateme);
+                timeoutValidateme = setTimeout(validateMe, 1000);
+            }
+
             return new Promise((res, rej) => {
                 let totalIncludes = $("include:not(.loading)").length;
                 if (totalIncludes == 0) {
@@ -360,15 +402,29 @@
                     run()
                 } else {
                     $("include:not(.loading)").each(function () {
-                        $(this).addClass("loading")
+                        $(this).addClass("loading");
+                        this.tryouts = 3;
+                        this.getSource = function () {
+                            this.timeoutToresolve = setTimeout(() => {
+                                this.tryouts--;
+                                if (this.tryouts > 0) {
+                                    // --    console.log("timeout retry..")
+                                    this.getSource();
+                                }
+                            }, 1000);
+                            getSource(this, $(this).attr("src")).then(() => {
+                                clearTimeout(this.timeoutToresolve);
+                                $(this).removeClass("loading");
+                                console.log("INCLUDE THIS:", this.attributes.src.value)
+                                totalIncludes--;
+                                if (totalIncludes == 0) {
 
-                        getSource(this, $(this).attr("src")).then(() => {
-                            totalIncludes--;
-                            if (totalIncludes == 0) {
-                                res();
-                            }
-                        });
-
+                                    Inspector.run();
+                                    res();
+                                }
+                            });
+                        }
+                        this.getSource();
                     });
                 }
 
@@ -392,22 +448,19 @@
             let ready = Inspector.Components.render(Inspector.Components.binds[i].$el);
             //SI ALGUNO NO ESTA LISTO LLAMA PARA ACTUALIZAR LA VISTA
             if (!ready) {
-                callToRefreshView();
-                break;
+                // SI NO A SIDO ELIMINADO
+                if (Inspector.Components.binds[i] != null && Inspector.Components.binds[i].$el != null) {
+                    // SI ESTA CONECTADO REINTENTA
+                    if (Inspector.Components.binds[i].$el.get(0).isConnected) {
+                        callToRefreshView();
+                        break;
+                    }
+                }
+
             }
         }
     }
 
-    var ticksCallback = [];
-    // METODO QUE LLAMA CUANDO UN VALOR SE HA MODIFICADO EN CUALQUIER OBJETO Y LANZA UN EVENTO QUE FUNCIONE COMO UN CALL
-    function dispatch_tickUpdate(instance, prop, a) {
-        setTimeout(() => {
-            //console.log("--------------------DISPATCH TICK UPDATE-------------------", prop, a);
-            for (let i in ticksCallback) {
-                ticksCallback[i].callback(instance, prop, a);
-            }
-        });
-    }
 
     // ESTE ES UNA CLASE QUE CREA UN OBSERVADOR DE PROPIEDADES.
     function ComponentWatcher($el, instanceName, className, fnclass) {
@@ -415,26 +468,31 @@
         this.$el = $el;
         this.$watchers = {};
 
+        var ticksCallback = [];
+        // METODO QUE LLAMA CUANDO UN VALOR SE HA MODIFICADO EN CUALQUIER OBJETO Y LANZA UN EVENTO QUE FUNCIONE COMO UN CALL
+        function dispatch_tickUpdate(instance, prop, a) {
+            setTimeout(() => {
+                //console.log("--------------------DISPATCH TICK UPDATE-------------------", prop, a);
+                for (let i in ticksCallback) {
+                    ticksCallback[i].callback(instance, prop, a);
+                }
+            });
+        }
+        $el.get(0).$handler = $el;
         $el.get(0).$ComWatchers = $el.get(0).$ComWatchers || {};
         $el.get(0).$ComWatchers[className] = this;
+        $el.get(0).instanceName = instanceName;
         this.getExpressions = function () {
             return $el.get(0).Inspector.getExpressions();
         }
         // ADICIONA EL HTML DENTRO DEL MISMO Y REMPLAZA LOS THIS POR EL INSTANCE CORRESPONDEINDE DEL OBJETO
-        $el.setHtml = $el.setHTML = (html) => {
+        $el.setHtml = etHtml = $el.setHTML = (html) => {
             $el.html(html);
-            $el._replaceThisWithMyInstanceName();
+            $el.get(0).Inspector.replaceThisWithMyInstanceName();
         };
 
-        $el._replaceThisWithMyInstanceName = function () {
-            $el.html($el.html().split("this.").join(instanceName + "."));
-            $el.get(0).Inspector.inspect();
-
-            // console.log("get Includes")
-            // -- Inspector.Includer.getIncludes();
 
 
-        };
         // INYECTA  METODOS PARA QUE RENDERIZE
         $el.$update = $el.$apply = $el.$render = function () {
             _this.onCallToRender();
@@ -468,7 +526,7 @@
             }
             return evaluated_ex_result;
         };
-        $el._replaceThisWithMyInstanceName();
+        $el.get(0).Inspector.replaceThisWithMyInstanceName();
         this.instance = new fnclass($el);
         // CREA UN METODO QUE SERA SOBREESCRITO POR FUERA
         this.onCallToRender = function () {
@@ -614,6 +672,9 @@
         }
         // ESTE METODO EVALUA EL EVENTO QUE SUCEDE EN LA VISTA.
         function evaluateEvent(_expresion, $event) {
+            if (_expresion.indexOf("this.") > -1) {
+                return null;
+            }
             //  console.log("evaluateEvent",_expresion,$event.type)         
             let $scope = getComponentScope();
             let totalComponents = Object.keys($scope);
@@ -651,10 +712,14 @@
                     _COUNT_INSPECTS++;
                     this.setAttribute("DOM-INSPECT-" + _COUNT_INSPECTS, "");
                     this.Inspector = {
-                        // OBTEN EL COMPONENTE (NOMBRE)
-                        component: this.attributes[attrselector].value,
                         // VARIABLE QUE INDICA SI ESTA RENDERIZANDO LA VISTA
                         rendering: false,
+                        instanceName: this.attributes.com.value.toLowerCase(),
+                        // OBTEN EL COMPONENTE (NOMBRE)
+                        component: function () {
+                            return $this.attributes[attrselector].value;
+                        },
+
                         // INSPECCIONA EL ELEMENTO PARA VER SI HAY NUEVAS EXPRESIONES POR VALIDAR
                         inspect: function () {
                             inspectNode($this);
@@ -668,14 +733,61 @@
                             // USA UN TIMEOUT DE UN MILISEGUNDO PARA QUE PASE A LA SIGUIENTE COLA DE EJECUCION Y ASI APILAR LOS LLAMADOS A SOLO 1.
                             clearTimeout(timeoutTorender);
                             timeoutTorender = setTimeout(render, 1);
+                        },
+                        replaceThisWithMyInstanceName: function () {
+                            // --   $el.html($el.html().split("this.").join(instanceName + "."));
+                            let expressions = this.getExpressions();
+                            for (let i = expressions.length - 1; i > -1; i--) {
+                                replaceExpressionThisWithInstaceName(expressions[i]);
+                            }
+                            this.inspect();
                         }
                     };
+
+                    var replaceThisWithInstance = function (exp) {
+                        try {
+                            exp = exp.split("this.").join($this.instanceName + ".");
+                        } catch (e) {
+                            console.log(e);
+                        }
+
+                        return exp;
+                    }
+
+                    var replaceExpressionThisWithInstaceName = function (expression) {
+                        if ($this.hasOwnProperty("instanceName") && $this.instanceName != "this") {
+                            for (let j = expression.expressions.length - 1; j > -1; j--) {
+                                let ex = expression.expressions[j];
+                                if (ex.indexOf("this.") > -1) {
+                                    if (expression.dom.nodeName == "#text") {
+                                        expression.dom.textContent = replaceThisWithInstance(expression.dom.textContent);
+                                    } else {
+
+                                        for (let _a = expression.dom.attributes.length - 1; _a > -1; _a--) {
+
+                                            expression.dom.attributes[_a].value = replaceThisWithInstance(expression.dom.attributes[_a].value);
+
+
+                                        }
+                                    }
+                                    expression.expressions[j] = replaceThisWithInstance(ex);
+
+                                }
+                            }
+                        }
+                        return expression;
+                    }
                     // CREA UNA VARIABLE PARA MEJOR ACCESO EN ESTE AMBITO
                     var _thisInspector = this.Inspector;
                     // CREA ARRAY DE ATRIBUTOS QUE GUARDARAN LAS EXPRESIONES A EVALUAR Y RENDERIZAR.        
                     var attributesToUpdate = [];
                     // DEFINE VARIABLE QUE GUARDA EL ID DE EJECUCION PARA UNTIMEOUT PARA INDICAR QUE HA TERMINADO Y ESTA LISTO.
                     var timeoutToCallReady = null;
+
+                    var compName=function(){
+                        return $this.attributes.com.value;
+                    }
+                    // -- console.log("compName", compName());
                     // INSPECCIONA EL NODO ACTUAL
                     inspectNode(this);
                     /*
@@ -683,8 +795,16 @@
                         PARA DEFINIR LAS EXPRESSIONES PARA EVALUAR.
                      */
                     function inspectNode(_el) {
+
                         // SI EL ELEMENTO TIENE ATRIBUTOS
                         if (_el.attributes != null) {
+                            // SI EL ELEMENTO TIENE un ATRIBUTO COM omitelo
+                            if (_el.attributes.hasOwnProperty("com")) {
+                              // --  console.log("validate", _el.attributes.com.value, "==", compName(), _el.attributes.com.value == compName());
+                                if (_el.attributes.com.value != compName()) {
+                                    return;
+                                }
+                            }
                             // VALIDA SI TIENE ATRIBUTOS DE MODELO
                             // --  SI EXISTE DEBE SER EL PRIMERO EN CORRER
                             if (_el.attributes.hasOwnProperty("model")) {
@@ -714,9 +834,12 @@
                                         addAttributeToUpdate(expresion);
                                         if (_el.value != null && _el.value != "") {
                                             setTimeout(() => {
-                                                evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", {
-                                                    target: _el
-                                                });
+
+                                                evaluateEvent.call(_el,
+                                                    replaceThisWithInstance(_el.attributes.model.value) + "=$event.target.value",
+                                                    {
+                                                        target: _el
+                                                    });
                                             });
                                         }
                                     } else if (_el.type == "radio") {
@@ -735,14 +858,14 @@
                                         */
                                         if (_el.type == "checkbox") {
                                             if (_el.checked) {
-                                                evaluateEvent.call(_el, _el.attributes.model.value + ".push($event.target.value)", evt);
+                                                evaluateEvent.call(_el, replaceThisWithInstance(_el.attributes.model.value) + ".push($event.target.value)", evt);
                                             } else {
-                                                let v = _el.attributes.model.value;
+                                                let v = replaceThisWithInstance(_el.attributes.model.value);
                                                 evaluateEvent.call(_el, v + ".splice(" + v + ".indexOf($event.target.value),1)", evt);
                                             }
                                         } else {
                                             setTimeout(() => {
-                                                evaluateEvent.call(_el, _el.attributes.model.value + "=$event.target.value", evt);
+                                                evaluateEvent.call(_el, replaceThisWithInstance(_el.attributes.model.value) + "=$event.target.value", evt);
                                             })
                                         }
                                         // NEXT EJECUTA POSTERIOR MENTE LOS LLAMADOS DE onchange O onkeyup SI ESTOS EXISTEN
@@ -781,8 +904,13 @@
                                      */
                                     if (!((eventname == "onkeydown" || eventname == "onkeyup" || eventname == "onchange") &&
                                         _el.attributes.hasOwnProperty("model"))) {
+
+
                                         _el[eventname] = function (evt) {
-                                            return evaluateEvent.call(_el, attr.value, evt);
+
+                                            var exp = replaceThisWithInstance(attr.value);
+
+                                            return evaluateEvent.call(_el, exp, evt);
                                         };
 
                                         // VALIDAR onclick con ontouch
@@ -790,7 +918,8 @@
                                             _el.ontouch = _el[eventname];
                                         }
                                     }
-                                } else if (attr.name == "show") {
+
+                                } else if (attr.name == "show" || attr.name == "hide") {
                                     let expresion = validate(_el, attr.name, attr.value.indexOf("{{") == -1 ? "{{" + attr.value + "}}" : attr.value);
                                     if (expresion != null) {
                                         addAttributeToUpdate(expresion);
@@ -884,6 +1013,7 @@
                         ESTE METODO AGREGA ATRIBUTOS PARA ACTUALIZAR.
                     */
                     function addAttributeToUpdate(expresion) {
+                        expresion = replaceExpressionThisWithInstaceName(expresion);
                         // VALIDATE IF DOM, NAME AND EXPRESSION EXIST
                         let exist = false;
                         for (let i in attributesToUpdate) {
@@ -897,6 +1027,8 @@
                         }
                         // DONT ADD IF ALLREADY EXIST
                         if (!exist) {
+                            // replace this with insanceName
+
                             attributesToUpdate.push(expresion);
                         }
                     }
@@ -941,6 +1073,7 @@
                         let totalComponents = Object.keys($scope);
                         let temp = [];
                         let rerender = false;
+                        let totalAttributesToUpdate = attributesToUpdate.length;
                         var iterationToRender = function (attr, i) {
                             let $element = attr.dom;
                             // si el $element esta conectado continuamos sino lo sacamos
@@ -984,7 +1117,7 @@
                                 // UPDATE            
                                 if (attr.name == "innerHTML") {
                                     // FIRST REMOVE ALL ' (SINGLE )
-                                    str_value = (str_value || "").split("'").join('"');
+                                    // -- str_value = (str_value || "").split("'").join('"');
                                     // VALIDATE IF NOT SAME
                                     if ($element.lastHTML == null || $element.lastHTML.trim() != str_value.trim()) {
                                         updated = "innerHTML";
@@ -1002,9 +1135,11 @@
                                             }, 1);
                                         }
                                         // VALIDATE IF THERE IS IMPORTS 
-                                        Inspector.Includer.getIncludes();
-                                        validateIfChildsOfNode($element);
-                                        rerender = true;
+                                        if ($("include:not(.loading)", $element).length > 0) {
+                                            Inspector.Includer.getIncludes();
+                                            validateIfChildsOfNode($element);
+                                            rerender = true;
+                                        }
                                     }
                                 } else if (attr.name == "attributes.class") {
                                     // VALIDATE IF NEED TO BE UPDATED
@@ -1057,6 +1192,7 @@
                                 if (Inspector.cicles > 999999) {
                                     Inspector.cicles = 1;
                                 }
+                                // -- console.log(Inspector.cicles)
                                 if (updated && Inspector.DEV) {
                                     console.log("now updated node view", updated, $element)
                                 }
@@ -1068,8 +1204,13 @@
                         let iterations = 0,
                             totalIterations = attributesToUpdate.length;
                         //console.log("---RENDER NOW ("+totalIterations+")--", $this)
-                        attributesToUpdate.forEach(iterationToRender);
-                        if (attributesToUpdate.length == 0) {
+                        //attributesToUpdate.forEach(iterationToRender);
+
+                        for (let _i = 0; _i < totalAttributesToUpdate; _i++) {
+                            iterationToRender(attributesToUpdate[_i], _i);
+                        }
+
+                        if (totalAttributesToUpdate == 0) {
                             onEndRender();
                         }
 
