@@ -417,6 +417,7 @@
 
                             //   temporal_request[_src] = $.get(_src + ");
                             temporal_request[_src].then(function (_r) {
+
                                 delete temporal_request[_src];
                                 callbacks[ext](from, _r, _src).then(dfd.resolve);
                             });
@@ -436,14 +437,14 @@
 
         let lastTotal = -1, timeoutValidateme;
         function validateMe($of) {
-            var total = $("include",$of).length;
+            var total = $("include", $of).length;
             // -- App.toast("total:" + total + "==" + lastTotal);
             if (total > 0) {
                 if (lastTotal == total) {
                     getIncludes();
                 } else {
                     lastTotal = total;
-                    timeoutValidateme = setTimeout(validateMe, 1000,$of);
+                    timeoutValidateme = setTimeout(validateMe, 1000, $of);
                 }
             }
         }
@@ -452,17 +453,18 @@
                 // VALIDAME EN UN SEGUNDO SI TODOS LOS INCLUDES SE HAN GENERADO
                 lastTotal = -1;
                 clearTimeout(timeoutValidateme);
-                timeoutValidateme = setTimeout(validateMe, 1000,$of);
+                timeoutValidateme = setTimeout(validateMe, 1000, $of);
             }
 
             return new Promise((res, rej) => {
-                let selector=$("include:not(.loading)",$of);
+                let selector = $("include:not(.loading)", $of);
                 let totalIncludes = selector.length;
                 if (totalIncludes == 0) {
                     res();
                     run()
                 } else {
                     selector.each(function () {
+                        let $includeDom = this;
                         $(this).addClass("loading");
                         this.tryouts = 3;
                         this.getSource = function () {
@@ -482,6 +484,7 @@
 
                                     Inspector.run();
                                     res();
+                                    $includeDom.remove();
                                 }
                             });
                         }
@@ -603,6 +606,10 @@
         // INYECTA UN WATCHER EXTERNO 
         $el.$watch = function (prop, fncallback) {
             _this.$watchers[prop] = fncallback;
+            return function unbind() {
+                _this.$watchers[prop] = null;
+                delete _this.$watchers[prop];
+            }
         };
         // CUANDO QUIERE QUE SE LE NOTIFIQUE CUANDO HAYA UN TICK UPDATE
         $el.$onTick = function (_callback) {
@@ -641,7 +648,7 @@
         this.instance.$eval = $el.$eval;
         this.instance.$onTick = $el.$onTick;
         this.instance.$instanceName = instanceName;
-        this.instance.$getIncludes=function(){
+        this.instance.$getIncludes = function () {
             $.Inspector.Includer.getIncludes();
         }
         // INYECTA UN SET PARA DEFINIR VALORES
@@ -696,7 +703,7 @@
                                     }
                                     // SI ES UN OBJECto TOCA REEVALUAR LAS PROPIEDADES YA QUE HA CAMBIADO...
                                     if (typeof (_obj[prop]) == "object") {
-                                     // --   setTimeout(() => { AddPropertiesEvaluator(_obj[prop], _parentTree + prop + "."); })
+                                        // --   setTimeout(() => { AddPropertiesEvaluator(_obj[prop], _parentTree + prop + "."); })
                                     }
                                 }
 
@@ -1244,6 +1251,7 @@
                                             console.log("-------------------------");
                                             console.error(e);
                                             console.log(this.str_fnc);
+                                            console.log($element);
                                             console.log("-------------------------");
                                         }
                                         return "";
@@ -1305,6 +1313,10 @@
                                                     validateIfChildsOfNode($element);
                                                     rerender = true;
                                                 }
+                                                // REPLACE THIS WITH INSTANCENAME
+
+                                                _thisInspector.replaceThisWithMyInstanceName();
+
                                             }
                                         } else if (attr.name == "attributes.class") {
                                             // VALIDATE IF NEED TO BE UPDATED
