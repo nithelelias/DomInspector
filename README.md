@@ -45,9 +45,9 @@ The inspector "INSPECT" the dom to validate if there is some components/Objects 
  <div com="Poo as mypoo">{{mypoo.name}}</div>
 ```
 
-To make this happend you can use several propertie names:
+To make this happend you need to use a attribute dom name:
 ```
-data-bind, bind, data-com, com
+ com
 ```
 ### Tags, properties and actions
 
@@ -85,13 +85,25 @@ Where **items** is an array/dic/hash/obj and **item** is the value iterator who 
 ```html
 <inlcude src="poocomponent.js">
 ```
-** Load full stack of files (pooocomponent.com):
+** Load full stack of files (pooocomponent.json):
 ```
 ["./pooocomponent.css","./poocomponent.js","./pooocomponent.html"]
 ```
 ```html
-<include src="poocomponent.com" />
+<include src="poocomponent.json" />
 ```
+** know when has load file=(pooocomponent.json):
+```
+["./pooocomponent.css","./poocomponent.js","./pooocomponent.html"]
+```
+```html
+<include src="poocomponent.json" onload="jsmethodcallback()" />
+```
+**  show some data while loading, can be anithing...
+```html
+<include src="somefile.html" onload="jsmethodcallback()">   ... LOADING </include>
+```
+
 
 ### Examples:
  A list with some examples i will be adding more
