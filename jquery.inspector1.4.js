@@ -1,8 +1,8 @@
 (function (owner) {
-
+    var hashResources = false;
     var Inspector = {
         DEV: false, // SET THIS TO TRUE TO LET WARNING LOGS GO        
-        version: "1.0.0.5",
+        version: "1.0.0.4",
         run: run,
         add: add,
         remove: remove,
@@ -67,7 +67,6 @@
             Inspector.Components.binds = {};
             // CLEAN ALL CSS ELEMENTS
             $(".include-css").remove();
-            Inspector.Includer.clear();
             // CLEAN ALL JS ELEMENTS            $(".include-js").remove();
             resolve();
         });
@@ -130,7 +129,6 @@
                             $el.get(0).$ComWatchers == null ||
                             (!$el.get(0).$ComWatchers.hasOwnProperty(compConstructorName) ||
                                 !Inspector.Components.binds.hasOwnProperty(tagname))) {
-
                             Inspector.Components.binds[tagname] = new ComponentWatcher($el, instanceActor, compConstructorName, Inspector.Components.Classes[compConstructorName]);
                             Inspector.Components.binds[tagname].onCallToRender = function () {
                                 if ($el != null) {
@@ -164,16 +162,9 @@
             render: function ($el) {
                 // IF ELEMENT NODE EXIST AND HAS INSPECTOR
                 if ($($el).length > 0 && $($el).get(0).isConnected && $($el).get(0).hasOwnProperty("Inspector")) {
-                    // VALIDATEIF IS BEEN RAWING
-                    if ($el.get(0).$dirty) {
-                        // RETURN TRY COUNT TO 0
-                        $el.get(0).try_count = 0;
-                        // HERE UPDATE ... THE VIEW...
-                        $($el).get(0).Inspector.update().then(() => {
-                            $el.get(0).$dirty = false;
-                        });
-
-                    }
+                    // RETURN TRY COUNT TO 0
+                    $el.get(0).try_count = 0;
+                    $($el).get(0).Inspector.update();
                     return true;
                 } else if ($el != null) {
                     // GET TRY COUNT AND ADD 1 COUNT.
@@ -198,7 +189,7 @@
     }
     // ESTE METODO CREA UN HANDLER PARA LOS INCLUDES SOLOS E EJECUTA UNA SOLA VEZ AL PRINCIPIO
     function IncluderHandler() {
-
+        let hash = hashResources ? (new Date).getMinutes() : ""; // Date.now();
         var libs_dic_temp = {};
         var temporal_request = {};
         let callbacks = {
@@ -238,22 +229,14 @@
                         callToRefreshView();
                         // SI EL INCLUDE TIENE EL METODO ONLOAD
                         if (_at.onload != null) {
-                            function tryToExecuteOnload() {
-                                let $scope = getComponentScope();
-                                let totalComponents = Object.keys($scope);
-                                if (totalComponents.length > 0) {
-                                    with ($scope) {
-                                        try {
-                                            evaluated_ex_result = eval(_at.attributes.onload.value);
-                                        } catch (e) {
-                                            console.warn(e);
-                                        }
-                                    }
-                                } else {
-                                    setTimeout(tryToExecuteOnload, 100);
+                            let $scope = getComponentScope();
+                            with ($scope) {
+                                try {
+                                    evaluated_ex_result = eval(_at.attributes.onload.value);
+                                } catch (e) {
+                                    console.warn(e);
                                 }
                             }
-                            tryToExecuteOnload();
                         }
                         dfd.resolve();
                     }, 1);
@@ -277,7 +260,7 @@
                 // APPEND JS IF NOT LOADED BEFORE.
                 if (!foundIfLibExist(src, "script", "src")) {
                     var s = document.createElement("script");
-                    s.src = src;
+                    s.src = src + "?hash=" + hash;
                     s.type = ismodule ? "module" : "text/javascript";
                     s.classList.add("include-js");
                     s.onload = function () {
@@ -300,7 +283,7 @@
                 // APPEND CSS
                 if (!foundIfLibExist(href, "link", "href")) {
                     var s = document.createElement("link");
-                    s.href = href;
+                    s.href = href + "?hash=" + hash;
                     s.rel = "stylesheet";
                     s.type = "text/css";
                     s.classList.add("include-css")
@@ -363,12 +346,11 @@
         };
 
         function foundIfLibExist(lib, tag, prop) {
-            // FIRST TRY TO FOUND IN LOCAL HASHMAP                        
+            let exist = false;
+            let arraylibs = $(tag).toArray();
             if (libs_dic_temp.hasOwnProperty(lib)) {
                 return true;
             }
-            let exist = false;
-            let arraylibs = $(tag).toArray();
             for (let i in arraylibs) {
                 if (arraylibs[i][prop].indexOf(lib) > -1) {
                     exist = true;
@@ -380,11 +362,16 @@
             return exist;
         }
 
+        
         function getSource(from, _src) {
             if (Array.isArray(_src)) {
                 return callbacks.com(from, _src);
             }
             let dfd = $.Deferred();
+            var onresolve=function(){
+             //   Inspector.run();
+                dfd.resolve();
+            }
             try {
                 // REMOVING ? pARAMS POST CALL
                 if (_src.indexOf("?") > 1) {
@@ -394,7 +381,7 @@
                 }
                 // if src is an array
                 if (_src.indexOf(",") > -1) {
-                    callbacks.com(from, _src.split(",")).then(dfd.resolve);
+                    callbacks.com(from, _src.split(",")).then(onresolve);
                 } else {
                     // GET EXTENSION
                     let ext = (([].concat(_src.split("."))).pop() + "").toLowerCase();
@@ -404,21 +391,18 @@
                     if (!callbacks.hasOwnProperty(ext)) {
                         ext = "com";
                     }
+
                     if (ext == "js" || ext == "mjs") {
-                        callbacks[ext](from, _src).then(dfd.resolve);
+                        callbacks[ext](from, _src).then(onresolve);
                     } else if (ext == "css") {
-                        callbacks[ext](from, _src).then(dfd.resolve);
+                        callbacks[ext](from, _src).then(onresolve);
                     } else {
                         if (!temporal_request.hasOwnProperty(_src)) {
                             // -- console.log(" LOADING... %c" + _src, "color: green; font-size:15px;");
-                            temporal_request[_src] = fetch(_src).then(function (response) {
-                                return response.text();
-                            });
-
-                            //   temporal_request[_src] = $.get(_src + ");
+                            temporal_request[_src] = $.get(_src + "?hash=" + hash);
                             temporal_request[_src].then(function (_r) {
                                 delete temporal_request[_src];
-                                callbacks[ext](from, _r, _src).then(dfd.resolve);
+                                callbacks[ext](from, _r, _src).then(onresolve);
                             });
                         } else {
                             // -- console.log("CURENTLY LOADING... %c" + _src, "color: red; font-size:15px;");
@@ -435,34 +419,33 @@
         }
 
         let lastTotal = -1, timeoutValidateme;
-        function validateMe($of) {
-            var total = $("include",$of).length;
+        function validateMe() {
+            var total = $("include").length;
             // -- App.toast("total:" + total + "==" + lastTotal);
             if (total > 0) {
                 if (lastTotal == total) {
                     getIncludes();
                 } else {
                     lastTotal = total;
-                    timeoutValidateme = setTimeout(validateMe, 1000,$of);
+                    timeoutValidateme = setTimeout(validateMe, 1000);
                 }
             }
         }
-        function getIncludes($of) {
+        function getIncludes() {
             {
                 // VALIDAME EN UN SEGUNDO SI TODOS LOS INCLUDES SE HAN GENERADO
                 lastTotal = -1;
                 clearTimeout(timeoutValidateme);
-                timeoutValidateme = setTimeout(validateMe, 1000,$of);
+                timeoutValidateme = setTimeout(validateMe, 1000);
             }
 
             return new Promise((res, rej) => {
-                let selector=$("include:not(.loading)",$of);
-                let totalIncludes = selector.length;
+                let totalIncludes = $("include:not(.loading)").length;
                 if (totalIncludes == 0) {
                     res();
                     run()
                 } else {
-                    selector.each(function () {
+                    $("include:not(.loading)").each(function () {
                         $(this).addClass("loading");
                         this.tryouts = 3;
                         this.getSource = function () {
@@ -479,7 +462,6 @@
                                 // -- console.log("INCLUDE THIS:", this.attributes.src.value)
                                 totalIncludes--;
                                 if (totalIncludes == 0) {
-
                                     Inspector.run();
                                     res();
                                 }
@@ -492,9 +474,6 @@
             });
         }
         return {
-            clear: function () {
-                libs_dic_temp = {}
-            },
             getIncludes: getIncludes,
             get: getSource,
             foundIfLibExist: foundIfLibExist
@@ -506,38 +485,32 @@
         timeOutToRefreshPostComponents = setTimeout(refreshViewPostComponent, 100);
     }
     // ESTE METODO REVISA TODO LOS COMPONENTES Y SI ESTAN TODOS LISTOS LOS MANDA A ACTUALZIAR
-    var renderingAll = false;
     function refreshViewPostComponent() {
         // INDICAMOS QUE ACTUELICE la vista
-        if (!renderingAll) {
-
-            renderingAll = true;
-            for (let i in Inspector.Components.binds) {
-                let ready = Inspector.Components.render(Inspector.Components.binds[i].$el);
-                //SI ALGUNO NO ESTA LISTO LLAMA PARA ACTUALIZAR LA VISTA
-                if (!ready) {
-                    // SI NO A SIDO ELIMINADO
-                    if (Inspector.Components.binds[i] != null && Inspector.Components.binds[i].$el != null) {
-                        // SI ESTA CONECTADO REINTENTA
-                        if (Inspector.Components.binds[i].$el.get(0).isConnected) {
-                            callToRefreshView();
-                            break;
-                        }
+        for (let i in Inspector.Components.binds) {
+            let ready = Inspector.Components.render(Inspector.Components.binds[i].$el);
+            //SI ALGUNO NO ESTA LISTO LLAMA PARA ACTUALIZAR LA VISTA
+            if (!ready) {
+                // SI NO A SIDO ELIMINADO
+                if (Inspector.Components.binds[i] != null && Inspector.Components.binds[i].$el != null) {
+                    // SI ESTA CONECTADO REINTENTA
+                    if (Inspector.Components.binds[i].$el.get(0).isConnected) {
+                        callToRefreshView();
+                        break;
                     }
                 }
+
             }
-            setTimeout(() => {
-                renderingAll = false;
-            });
         }
     }
+
 
     // ESTE ES UNA CLASE QUE CREA UN OBSERVADOR DE PROPIEDADES.
     function ComponentWatcher($el, instanceName, className, fnclass) {
         let _this = this;
         this.$el = $el;
         this.$watchers = {};
-        $el.get(0).$dirty = true;
+
         var ticksCallback = [];
         // METODO QUE LLAMA CUANDO UN VALOR SE HA MODIFICADO EN CUALQUIER OBJETO Y LANZA UN EVENTO QUE FUNCIONE COMO UN CALL
         function dispatch_tickUpdate(instance, prop, a) {
@@ -563,41 +536,40 @@
 
         $el.$onAllIncludesload = $el.get(0).onAllIncludesload = function (_callback) {
             $el.$callback_onAllIncludesload = _callback;
-            if ($("include", $el).length == 0) {
-                _callback();
-            }
         };
         // VALIDA: SI DENTRO HAY INCLUDES, ENTONCES EPSERAQUE TERMINEN
         if ($("include", $el).length > 0) {
-            (() => {
-                let _end = false;
-                let $parent = $("include", $el).parent();
-                let timeoutToTimeout = null, interavalDomChange = null;
-                function callbackOnChangeDom() {
-                    // CUANDO YA NO HAY INCLUDES  
+            let _end = false;
+            let $parent = $("include", $el).parent();
+            let listenToDomChange = function () {
+                // CUANDO YA NO HAY INCLUDES 
+                if ($("include", this).length == 0 && !_end) {
+                    // QUITA ESTE EVENTO DE ESCUCHA ADEMAS USO LA VARIABLE END POR SI LA ASINCRONIA HACE QUE E ESCAPE UN EVENTO MAS
+                    _end = true;
+                    try {
+                        $parent.unbind("DOMSubtreeModified", listenToDomChange);
+                        $parent.off("DOMSubtreeModified", listenToDomChange);
+                    } catch (e) {
 
-                    if ($("include", $parent).length == 0 && !_end) {
-                        // QUITA ESTE EVENTO DE ESCUCHA ADEMAS USO LA VARIABLE END POR SI LA ASINCRONIA HACE QUE E ESCAPE UN EVENTO MAS
-                        _end = true;
-                        clearInterval(interavalDomChange);
-                        // Y HAS UN TIMEOUT INSPECCIONAR LOS ELEMENTOS
-                        clearTimeout(timeoutToTimeout);
-                        timeoutToTimeout = setTimeout(() => {
-                            if ($el.$callback_onAllIncludesload != null) {
-                                $el.$callback_onAllIncludesload();
-                            }
-                            $el.get(0).Inspector.replaceThisWithMyInstanceName();
-                        }, 30);
                     }
 
-                };
-                interavalDomChange = setInterval(callbackOnChangeDom, 10);
-            })();
+                    // Y HAS UN TIMEOUT INSPECCIONAR LOS ELEMENTOS
+                    clearTimeout(this.timeoutToTimeout);
+                    this.timeoutToTimeout = setTimeout(() => {
+                        if ($el.$callback_onAllIncludesload != null) {
+                            $el.$callback_onAllIncludesload();
+                        }
+                        $el.get(0).Inspector.replaceThisWithMyInstanceName();
+                    }, 100);
+                }
+
+            }
+            $parent.on("DOMSubtreeModified", listenToDomChange);
+
         }
 
         // INYECTA  METODOS PARA QUE RENDERIZE
         $el.$update = $el.$apply = $el.$render = function () {
-            _this.$el.get(0).$dirty = true;
             _this.onCallToRender();
         };
         // INYECTA UN WATCHER EXTERNO 
@@ -641,9 +613,7 @@
         this.instance.$eval = $el.$eval;
         this.instance.$onTick = $el.$onTick;
         this.instance.$instanceName = instanceName;
-        this.instance.$getIncludes=function(){
-            $.Inspector.Includer.getIncludes();
-        }
+
         // INYECTA UN SET PARA DEFINIR VALORES
         this.instance.set = function (prop, value) {
             if (this[prop] != value) {
@@ -652,7 +622,6 @@
         };
         // CUANDO HAY UN CAMBIO EN ALGUNA PROPIEDAD DEL OBJETO.
         function on_dispatch_tickupdate(_obj, prop, _v) {
-            $el.get(0).$dirty = true;
             dispatch_tickUpdate(_obj, prop, _v);
 
         }
@@ -696,7 +665,9 @@
                                     }
                                     // SI ES UN OBJECto TOCA REEVALUAR LAS PROPIEDADES YA QUE HA CAMBIADO...
                                     if (typeof (_obj[prop]) == "object") {
-                                     // --   setTimeout(() => { AddPropertiesEvaluator(_obj[prop], _parentTree + prop + "."); })
+                                        setTimeout(() => {
+                                            AddPropertiesEvaluator(_obj[prop], _parentTree + prop + ".");
+                                        })
                                     }
                                 }
 
@@ -715,13 +686,15 @@
                     });
                     // AHORA SI LA PROPIEDAD ES UN DICCIONARIO/HASH/OBJECT
                     if (typeof (_obj[prop]) == "object") {
-                        // -- AddPropertiesEvaluator(_obj[prop], _parentTree + prop + ".");
+                        AddPropertiesEvaluator(_obj[prop], _parentTree + prop + ".");
                     }
                 }
             });
         }
 
         this.delete = function () {
+
+
             delete this.instance;
             $el = null;
             delete $el;
@@ -784,7 +757,7 @@
         }
         // ESTE METODO EVALUA EL EVENTO QUE SUCEDE EN LA VISTA.
         function evaluateEvent(_expresion, $event) {
-            if (_expresion.length == 0 || _expresion.indexOf("this.") > -1) {
+            if (_expresion.indexOf("this.") > -1) {
                 return null;
             }
             //  console.log("evaluateEvent",_expresion,$event.type)         
@@ -805,7 +778,7 @@
                         }
                     }
                 }
-                // - refreshViewPostComponent();
+                refreshViewPostComponent();
                 // save scope
                 storeScope($scope);
             }
@@ -820,8 +793,6 @@
                     var $this = this;
                     // CREA UNA VARIABLE QUE ALMACENA EL ID DE TIMEOUT PARA NO RENDERIZAR VARIAS VECES EN EL MISMO TIEMPO.   
                     var timeoutTorender = null;
-                    //
-                    var resolveDfd = null;
                     // INICIALIZA EL INSPECTOR 
                     _COUNT_INSPECTS++;
                     this.setAttribute("DOM-INSPECT-" + _COUNT_INSPECTS, "");
@@ -846,13 +817,7 @@
                         update: function () {
                             // USA UN TIMEOUT DE UN MILISEGUNDO PARA QUE PASE A LA SIGUIENTE COLA DE EJECUCION Y ASI APILAR LOS LLAMADOS A SOLO 1.
                             clearTimeout(timeoutTorender);
-                            return new Promise((resolve, reject) => {
-                                resolveDfd = {
-                                    resolve: resolve,
-                                    reject: reject
-                                };
-                                timeoutTorender = setTimeout(render, 1);
-                            });
+                            timeoutTorender = setTimeout(render, 1);
                         },
                         replaceThisWithMyInstanceName: function () {
                             // --   $el.html($el.html().split("this.").join(instanceName + "."));
@@ -1169,49 +1134,25 @@
                             }
                         }
                         let indexes = [value.indexOf("{{"), value.indexOf("}}")];
-                        if (indexes.length > 0) {
-                            if (indexes[0] > -1 && indexes[1] > -1) {
-                                let value_str = value;
-                                let vlength = value_str.length;
-                                let expressions = [];
-                                let broke = false;
-                                while (indexes[0] > -1 && indexes[1] > -1) {
-                                    try {
-                                        if ((indexes[0] + 2 < indexes[1]) && vlength > indexes[0] + 2 && vlength > indexes[1]) {
-                                            expressions.push(value_str.substring(indexes[0] + 2, indexes[1]));
-                                            value_str = value_str.substr(0, indexes[0]) + "-$ex" + expressions.length + "$-" + value_str.substr(indexes[1] + 2, value_str.length);
-                                            indexes = [value_str.indexOf("{{"), value_str.indexOf("}}")];
-                                        } else {
-
-                                            console.log("%c INSPECTOR CANT EVAUATE THIS:", "color:#9e9d24 ;font-size:14px;");
-                                            console.log(value_str);
-                                            broke = true;
-                                            break;
-                                        }
-                                    } catch (e) {
-                                        console.error(e);
-                                        broke = true;
-                                        break;
-                                    }
-                                }
-                                if (broke) {
-                                    return null;
-                                }
-                                return {
-                                    dom: _el,
-                                    name: prop_name,
-                                    value: value_str,
-                                    expressions: expressions
-                                };
+                        if (indexes[0] > -1 && indexes[1] > -1) {
+                            let value_str = value;
+                            let expressions = [];
+                            while (indexes[0] > -1 && indexes[1] > -1) {
+                                expressions.push(value_str.substring(indexes[0] + 2, indexes[1]));
+                                value_str = value_str.substr(0, indexes[0]) + "-$ex" + expressions.length + "$-" + value_str.substr(indexes[1] + 2, value_str.length);
+                                indexes = [value_str.indexOf("{{"), value_str.indexOf("}}")];
                             }
-                        } else {
-                            console.log("$cERROR EVALUATING..", "color:red;font-size:12px")
+                            return {
+                                dom: _el,
+                                name: prop_name,
+                                value: value_str,
+                                expressions: expressions
+                            };
                         }
                         return null;
                     }
                     // ESTE METODO ACTUALIZA EL HTML
                     function render() {
-
                         if (_thisInspector.rendering == true) {
                             return;
                         }
@@ -1222,150 +1163,129 @@
                         let temp = [];
                         let rerender = false;
                         let totalAttributesToUpdate = attributesToUpdate.length;
-
                         var iterationToRender = function (attr, i) {
-
                             let $element = attr.dom;
                             // si el $element esta conectado continuamos sino lo sacamos
                             //console.log($element,$element.isConnected);
                             if ($element.isConnected) {
                                 // GUARDAMOS EN U TEMPORAL 
                                 temp.push(attr);
+                                let str_value = "" + attr.value;
+                                let expressions = attr.expressions;
+                                // SI NO ES: ITERA LAS EXPRESSIONES DENTRO 
 
-                                if (!attr.exec) {
-                                    let expressions = attr.expressions;
-                                    // 
-                                    attr.fncs = new Array(expressions.length);
-                                    attr.str_fnc = "" + attr.value;
-                                    attr.exec_fnc = function () {
+                                for (let j = expressions.length - 1; j >= 0; j--) {
+                                    let mark = "-$ex" + (j + 1) + "$-";
+                                    // SCOPEINSTANCE
+                                    with ($scope) {
                                         try {
-                                            return eval("`" + this.str_fnc + "`");
+                                            if (totalComponents.length > 0) {
+                                                let evaluated_ex = eval(expressions[j]);
+                                                if (evaluated_ex == undefined) {
+                                                    evaluated_ex = "";
+                                                }
+                                                if ((evaluated_ex).toString() == "[object Object]") {
+                                                    evaluated_ex = JSON.stringify(evaluated_ex);
+                                                }
+                                                str_value = str_value.replace(mark, evaluated_ex);
+                                            } else {
+                                                str_value = str_value.replace(mark, "");
+                                            }
                                         } catch (e) {
-                                            console.log("-------------------------");
-                                            console.error(e);
-                                            console.log(this.str_fnc);
-                                            console.log("-------------------------");
-                                        }
-                                        return "";
-
-                                    }
-                                    // SI NO ES: ITERA LAS EXPRESSIONES DENTRO                                
-                                    for (let j = expressions.length - 1; j >= 0; j--) {
-                                        let mark = "-$ex" + (j + 1) + "$-";
-                                        // SCOPEINSTANCE
-                                        with ($scope) {
-                                            if (attr.fncs[j] == null) {
-                                                // DEFINITY 
-                                                let ex = expressions[j];
-                                                let fnc = `()=> { let evaluated_ex ='';try{ if (totalComponents.length > 0) {  evaluated_ex =(${ex});if (evaluated_ex == undefined) {evaluated_ex = "";}if ((evaluated_ex).toString() == "[object Object]") {evaluated_ex = JSON.stringify(evaluated_ex);}} else {evaluated_ex=''; }}catch(e){  if (Inspector.DEV) {console.warn(e);}}return evaluated_ex;};`;
-                                                // SCOPEINSTANCE
-                                                with ($scope) {
-                                                    try {
-                                                        attr.fncs[j] = eval(fnc);
-                                                    } catch (e) {
-                                                        console.log("%cerror----------------", "color:red;font-size:20px");
-                                                        console.log(e);
-                                                        console.log(ex);
-                                                        // -- console.log(fnc);
-                                                        console.log("%c-------------------------------->", "color:red;font-size:20px");
-                                                    }
-                                                }
+                                            str_value = str_value.replace(mark, "");
+                                            if (Inspector.DEV) {
+                                                console.warn("Can parse inspection on:" + expressions[j], $element);
+                                                console.warn(e);
                                             }
-                                            attr.str_fnc = attr.str_fnc.replace(mark, '${attr.fncs[' + j + ']()}');
-                                        }
-                                    }
-                                    // EXECUTE THE RENDER EVALUATE
-                                    attr.exec = function () {
-                                        let str_value = attr.exec_fnc();
-                                        // VALIDATE IF THE ATTRIBUTE OF UPDATE IS NOT THE SAME VALUE
-                                        let updated = false;
-                                        // UPDATE            
-                                        if (attr.name == "innerHTML") {
-                                            // FIRST REMOVE ALL ' (SINGLE )
-                                            // -- str_value = (str_value || "").split("'").join('"');
-                                            // VALIDATE IF NOT SAME
-                                            if ($element.lastHTML == null || $element.lastHTML.trim() != str_value.trim()) {
-                                                updated = "innerHTML";
-                                                // console.log("rewrite HTML", $element.nodeName);
-                                                // RE WRITE HTML
-                                                $element.lastHTML = str_value.trim();
-                                                $($element).html(str_value);
-                                                if ($element.nodeName == "REPEAT") {
-                                                    // WITH REPEAT THERE IS NEEDED SOME TIME TO VALIDATE CONNECTED CHILDS
-                                                    setTimeout(function () {
-                                                        // VALIDATE IF THERE IS CHILDS TO RENDER   BY FORCE                                        
-                                                        if (validateIfChildsOfNode($element) > 0) {
-                                                            _thisInspector.update();
-                                                        }
-                                                    }, 1);
-                                                }
-                                                // VALIDATE IF THERE IS IMPORTS 
-                                                if ($("include:not(.loading)", $element).length > 0) {
-                                                    Inspector.Includer.getIncludes();
-                                                    validateIfChildsOfNode($element);
-                                                    rerender = true;
-                                                }
-                                            }
-                                        } else if (attr.name == "attributes.class") {
-                                            // VALIDATE IF NEED TO BE UPDATED
-                                            if ($($element).attr("class") != str_value) {
-                                                updated = "class";
-                                                $($element).attr("class", str_value);
-                                            }
-                                        } else if (attr.name.indexOf("attributes") > -1) {
-                                            let attr_name = attr.name.split("attributes.")[1];
-                                            // VALIDATE IF NEED TO BE UPDATED ENTER ALL ATTRIBUTES LIKE VALUE AND STYLE
-                                            if ($($element).attr(attr_name) != str_value) {
-                                                /**
-                                                 *  IF IS DIFFERENT OVERWRITE, BUT VALIDATE IF IS AND INPUT ON FOCUS                                         * 
-                                                  */
-                                                if (!$($element).is("input:focus")) {
-                                                    updated = attr_name;
-                                                    $($element).attr(attr_name, str_value);
-
-                                                }
-                                            }
-                                        } else if (attr.name.indexOf("textContent") > -1) {
-                                            // VALIDATE IF NEED TO BE UPDATED
-                                            if ($element.textContent != str_value) {
-                                                updated = "textContent"
-                                                $element.textContent = str_value;
-                                            }
-                                        } else {
-                                            // VALIDATE IF NEED TO BE UPDATED                                
-                                            let attr_value = getDescendantProp($element, attr.name);
-                                            if (attr_value != str_value) {
-                                                updated = attr.name
-                                                setDescendantProp($element, attr.name, str_value);
-                                                // SI EL ATTRIBUTO SE ACTUALIZA Y ES UN SHOW
-                                                if (attr.name == "show") {
-                                                    if (str_value.trim() == "false") {
-                                                        $($element).hide();
-                                                    } else {
-                                                        $($element).show();
-                                                    }
-                                                } else if (attr.name == "hide") {
-                                                    if (str_value.trim() == "false") {
-                                                        $($element).show();
-                                                    } else {
-                                                        $($element).hide();
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Inspector.cicles++
-                                        if (Inspector.cicles > 999999) {
-                                            Inspector.cicles = 1;
-                                        }
-                                        if (updated && Inspector.DEV) {
-                                            // -- console.log(Inspector.cicles)
-                                            console.log("now updated node view", updated, $element)
                                         }
                                     }
                                 }
-                                attr.exec();
-                            }
+                                // VALIDATE IF THE ATTRIBUTE OF UPDATE IS NOT THE SAME VALUE
+                                let updated = false;
 
+                                // UPDATE            
+                                if (attr.name == "innerHTML") {
+                                    // FIRST REMOVE ALL ' (SINGLE )
+                                    // -- str_value = (str_value || "").split("'").join('"');
+                                    // VALIDATE IF NOT SAME
+                                    if ($element.lastHTML == null || $element.lastHTML.trim() != str_value.trim()) {
+                                        updated = "innerHTML";
+                                        // console.log("rewrite HTML", $element.nodeName);
+                                        // RE WRITE HTML
+                                        $element.lastHTML = str_value.trim();
+                                        $($element).html(str_value);
+                                        if ($element.nodeName == "REPEAT") {
+                                            // WITH REPEAT THERE IS NEEDED SOME TIME TO VALIDATE CONNECTED CHILDS
+                                            setTimeout(function () {
+                                                // VALIDATE IF THERE IS CHILDS TO RENDER   BY FORCE                                        
+                                                if (validateIfChildsOfNode($element) > 0) {
+                                                    _thisInspector.update();
+                                                }
+                                            }, 1);
+                                        }
+                                        // VALIDATE IF THERE IS IMPORTS 
+                                        if ($("include:not(.loading)", $element).length > 0) {
+                                            Inspector.Includer.getIncludes();
+                                            validateIfChildsOfNode($element);
+                                            rerender = true;
+                                        }
+                                    }
+                                } else if (attr.name == "attributes.class") {
+                                    // VALIDATE IF NEED TO BE UPDATED
+                                    if ($($element).attr("class") != str_value) {
+                                        updated = "class";
+                                        $($element).attr("class", str_value);
+                                    }
+                                } else if (attr.name.indexOf("attributes") > -1) {
+                                    let attr_name = attr.name.split("attributes.")[1];
+                                    // VALIDATE IF NEED TO BE UPDATED ENTER ALL ATTRIBUTES LIKE VALUE AND STYLE
+                                    if ($($element).attr(attr_name) != str_value) {
+                                        /**
+                                         *  IF IS DIFFERENT OVERWRITE, BUT VALIDATE IF IS AND INPUT ON FOCUS                                         * 
+                                          */
+                                        if (!$($element).is("input:focus")) {
+                                            updated = attr_name;
+                                            $($element).attr(attr_name, str_value);
+
+                                        }
+                                    }
+                                } else if (attr.name.indexOf("textContent") > -1) {
+                                    // VALIDATE IF NEED TO BE UPDATED
+                                    if ($element.textContent != str_value) {
+                                        updated = "textContent"
+                                        $element.textContent = str_value;
+                                    }
+                                } else {
+                                    // VALIDATE IF NEED TO BE UPDATED                                
+                                    let attr_value = getDescendantProp($element, attr.name);
+                                    if (attr_value != str_value) {
+                                        updated = attr.name
+                                        setDescendantProp($element, attr.name, str_value);
+                                        // SI EL ATTRIBUTO SE ACTUALIZA Y ES UN SHOW
+                                        if (attr.name == "show") {
+                                            if (str_value.trim() == "false") {
+                                                $($element).hide();
+                                            } else {
+                                                $($element).show();
+                                            }
+                                        } else if (attr.name == "hide") {
+                                            if (str_value.trim() == "false") {
+                                                $($element).show();
+                                            } else {
+                                                $($element).hide();
+                                            }
+                                        }
+                                    }
+                                }
+                                Inspector.cicles++
+                                if (Inspector.cicles > 999999) {
+                                    Inspector.cicles = 1;
+                                }
+                                // -- console.log(Inspector.cicles)
+                                if (updated && Inspector.DEV) {
+                                    console.log("now updated node view", updated, $element)
+                                }
+                            }
                             onEndRender();
                         };
                         // --console.log(attributesToUpdate);
@@ -1391,12 +1311,7 @@
                                 // RE RENDER
                                 if (rerender) {
                                     render();
-                                } else {
-                                    // ENDING
-                                    if (resolveDfd != null) {
-                                        resolveDfd.resolve();
-                                    }
-                                }
+                                } else { }
                                 storeScope($scope);
                                 _thisInspector.rendering = false;
                             }
